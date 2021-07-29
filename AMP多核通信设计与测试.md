@@ -1,6 +1,6 @@
 ## 一.多核通信方案总体流程
 
-![](pictures\AMP.png)					 											
+![](pictures/AMP.png)					 											
 
 <center>图1 多核通信方案流程</center>
 
@@ -42,7 +42,7 @@
 
 **1.物理内存划分**
 
-![](pictures\ampmem1.PNG)
+![](pictures/ampmem1.PNG)
 
 <center>图 2 物理内存分布</center>
 
@@ -60,13 +60,13 @@
 
 **2.linux虚拟地址映射**
 
-![](pictures\ampmem2.PNG)
+![](pictures/ampmem2.PNG)
 
 <center>图 3 linux虚拟地址映射</center>
 
 **3.裸机虚拟地址映射**
 
-![](pictures\ampmem3.PNG)
+![](pictures/ampmem3.PNG)
 
 <center>图 4  裸机虚拟地址映射</center>
 
@@ -74,7 +74,7 @@
 
 ## 三.CPU0与CPU1双核通信方案与测试
 
-![](pictures\doublecore_test.png) 
+![](pictures/doublecore_test.png) 
 
 <center>图5 一个ddr共享内存通信循环流程</center>
 
@@ -106,13 +106,13 @@
 
 **size(KB)：**每次读写的共享内存数据的长度
 
-![](pictures\scope_1.png)
+![](pictures/scope_1.png)
 
 <center>图6 ddr共享内存测试</center>
 
 　　图6是使用ddr作为共享内存测试的波形图，freq为1670，size为64，因此通信速率为1670Hz * 2 * 2w * 2r&check * 64KB = 875560960B/s = 7.00Gbps
 
-![](pictures\scope_2.png)
+![](pictures/scope_2.png)
 
 <center>图7 sram共享内存测试</center>
 
