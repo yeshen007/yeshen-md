@@ -51,5 +51,6 @@ Module.symvers
 Mkfile.old
 dkms.conf
 
-#
+# leaf god add stuff
 tags
+.gitignore
