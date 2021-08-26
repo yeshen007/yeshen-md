@@ -7,7 +7,7 @@
 
 #### 1、汇编阶段的处理
 
-​		发生中断时，cpu进入irq异常模式，会跑到异常向量表运行。linux在之前已经初始化了异常向量表和异常处理代码，异常向量表在虚拟地址0xffff0000处。异常向量表和处理代码在arch/arm/kernel/entry_armv.S中定义。
+​		发生中断时，cpu进入irq异常模式，会跑到异常向量表运行。linux在之前已经初始化了异常向量表和异常处理代码，异常向量表在虚拟地址0xffff0000处。异常向量表和处理代码在arch/arm/kernel/entry-armv.S中定义。
 
 ```c
 .........................................................................................
@@ -400,7 +400,7 @@ asmlinkage void __exception_irq_entry gic_handle_irq(struct pt_regs *regs)
 
 ```c
 /* 处理注册的irq，此时irq已经是虚拟中断号 */
-void handle_IRQ(unsigned int irq, struct pt_regs *regs)
+void handle_IRQ(unsigned int irq, struct pt_regs *regs)·
 {
 	struct pt_regs *old_regs = set_irq_regs(regs);
 
@@ -804,7 +804,7 @@ err:
 }
 ```
 
-of_irq_init最终会通过调用gic_of_init进行终端子系统的核心初始化。
+of_irq_init最终会通过调用gic_of_init进行中断子系统的核心初始化。
 
 ```c
 int __init gic_of_init(struct device_node *node, struct device_node *parent)
