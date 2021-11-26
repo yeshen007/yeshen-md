@@ -2,7 +2,7 @@
 
 ### 一、dma概括
 
-![](E:\叶神文档\Markdown及其pdf\draw\dma.svg)
+![](draw/dma.svg)
 
 ​		上图展示了dma的工作原理与流程，dma解放了cpu，使得设备和内存在传输数据时cpu可以处理别的事务。可以概括为以下情况：
 
@@ -67,7 +67,7 @@ enum dma_data_direction {
 ```
 ​		无论v7_dma_inv_range还是v7_dma_clean_range最开始要做的就是获取cache的行大小。首先读取Cache Type Register，该寄存器各字段如下。其中只关注DminLine字段，这个字段表示的是所有dcache和ucache中最小的缓存行的字数的$log_2$，经过lsr和and后DminLine被右移到最右边4位，并将其他位清0。假设缓存行为A字，那么DminLine = $log_2$A ，通过最后两行的mov指令得到 reg = 4 << $log_2$A，即行的字节大小。
 
-![](E:\叶神文档\Markdown及其pdf\pictures\dma2.PNG)
+![](pictures/dma2.PNG)
 
 
 
@@ -131,9 +131,3 @@ ENDPROC(v7_dma_clean_range)
 ```
 
 ​		如果数据方向是从内存到设备，则进入v7_dma_clean_range。传进的参数start和end指定用作dma区域的内存起始和结尾地址，因为数据方向设备读取该区域，所以需要将cpu中该区域的缓存清到内存中，防止设备读取到的不是最新的数据。因为传进的边界地址可能不是缓存行对齐，所以在清缓存操作前先将边界地址作对齐处理，这样只会多清一部分，而且清缓存不会造成计算或处理出错。
-
-
-
-
-
-

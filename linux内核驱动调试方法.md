@@ -21,9 +21,9 @@
 
   这些内核调试功能也通常需要在配置内核时选择，如下图所示，在Kernel hacking菜单下进行各种调试功能配置。
 
-![](pictures/kerneldeg.PNG)
+![](pictures\kerneldeg.PNG)
 
-![](pictures/kerneldeg1.PNG)
+![](pictures\kerneldeg1.PNG)
 
 
 
@@ -99,7 +99,7 @@ module_exit(yeshen_exit);
 
 ​		我通过以上一个模块示例来展示，通过insmod加载模块后发现模块加载函数中所有printk信息都打印了出来，如下图。
 
-![](pictures/printk1.PNG)
+![](pictures\printk1.PNG)
 
 然后将触发打印级别8改为4：
 
@@ -112,7 +112,7 @@ module_exit(yeshen_exit);
 ```c
 # echo "5 4 1 7" > /proc/sys/kernel/printk
 ```
-![](pictures/printk2.PNG)
+![](pictures\printk2.PNG)
 
 
 

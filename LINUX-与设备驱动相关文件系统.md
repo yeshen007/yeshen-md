@@ -99,7 +99,7 @@ static void init_inode(struct inode *inode, struct treepath *path)
 
 
 
-![](pictures/fs.PNG)
+![](pictures\fs.PNG)
 
 
 

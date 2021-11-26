@@ -97,8 +97,8 @@ ELF Header:
   Class:                             ELF32
   Data:                              2's complement, little endian
   Version:                           1 (current)
-  OS/ABI:                            UNIX - System V
-  ABI Version:                       0
+  OS/ABI:                            UNIX - System V	//哪来的
+  ABI Version:                       0				   //哪来的
   Type:                              EXEC (Executable file)
   Machine:                           Intel 80386
   Version:                           0x1

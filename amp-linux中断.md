@@ -90,8 +90,9 @@ vector_\name:
 	@
 	/* 将r0，修正后的lr_<exception>，spsr_<exception>保存到sp_<exception>中，
 	 * spsr_<exception>是进入中断前的cpsr，sp_<exception>空间很小
+	 * 因为stmia的寄存器没有!,所以执行完后还是原来的值
 	 */													 		
-	stmia	sp, {r0, lr}	@ save r0, lr				    
+	stmia	sp, {r0, lr}	@ save r0, lr 				    
 	mrs	lr, spsr		    @ lr = spsr_<exception>           
 	str	lr, [sp, #8]		@ save spsr
 
@@ -143,7 +144,7 @@ ENDPROC(__irq_usr)
       .align	5
 __irq_svc:
 	svc_entry		// 保存svc中断现场 
-	irq_handler		// c预言irq处理入口，调用gic_handle_irq
+	irq_handler		// irq处理c语言入口，调用gic_handle_irq
 
 #ifdef CONFIG_PREEMPT
 	get_thread_info tsk		//

@@ -1,6 +1,6 @@
 ## 一. Cortex-A9 MPCore双核通信方案总体流程
 
-![](pictures/a9double.png)
+![](E:\叶神文档\Markdown及其pdf\pictures\a9double.png)
 
 <center>图1 双核通信方案流程</center>
 
@@ -51,7 +51,7 @@
 
 ### **1. 物理内存划分**
 
-![](pictures/a9phy.png)
+![](E:\叶神文档\Markdown及其pdf\pictures\a9phy.png)
 
 <center>图2 物理内存分布</center>
 
@@ -71,12 +71,12 @@
 
 ### **2. 0核裸机虚拟地址映射**
 
-![](pictures/cpu0vir.png)
+![](E:\叶神文档\Markdown及其pdf\pictures\cpu0vir.png)
 
 <center>图3 0核裸机虚拟地址映射</center>
 
 ### **3. 1核裸机虚拟地址映射**
 
-![](pictures/core1vir.png)
+![](E:\叶神文档\Markdown及其pdf\pictures\core1vir.png)
 
 <center>图4 1核裸机虚拟地址映射</center>
