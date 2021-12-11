@@ -264,5 +264,126 @@ $ sopc2dts --input soc_system.sopcinfo \
 
 ```
 
+#### 6.4 评估板3.10
+
+#### 6.4.1 buildroot
+
+```c
+/******************************************************************************
+ * 环境 -- ubuntu14.04
+ * buildroot版本 -- 2014.08
+ * 编译buildroot工具链 -- 交叉4.9
+ ******************************************************************************/
+
+/* 首先切换到buildroot目录 */
+cd ~/yezheng/socfpga/buildroot
+
+/* 清洗 */
+make clean
+
+/* 配置 */
+cp yzconfig .config 
+make menuconfig
+
+/* 编译 */
+make 
+make	//也许你很疑惑，我他妈也是啊，第一次会报错，第二次就好了
+
+```
+
+#### 6.4.2 linux kernel
+
+```c
+/******************************************************************************
+ * 环境 -- ubuntu14.04
+ * kernel版本 -- 3.10
+ * 编译kernel工具链 -- 交叉4.9
+ ******************************************************************************/
+
+/* 首先切换到kernel目录 */
+cd ~/yezheng/socfpga/linux-socfpga-socfpga-3.10-ltsi
+
+/* 导出环境变量 */
+export CROSS_COMPILE=/home/yeshen/yezheng/socfpga/toolchain/gcc-linaro-arm-linux-gnueabihf-4.9-2014.09_linux/bin/arm-linux-gnueabihf-
+export ARCH=arm
+export PATH=/home/yeshen/yezheng/socfpga/u-boot-socfpga/tools:$PATH
+
+/* 大清洗 */
+make distclean
+
+/* 配置 */
+make socfpga_defconfig
+
+/* 编译内核 */
+make zImage -j8
+make uImage LOADADDR=0x8000 -j8
+
+/* 编译设备树 */
+make socfpga_cyclone5.dtb -j8
+
+/* 编译模块 */
+make modules -j8
+
+/* 安装模块，将包含模块的lib/modules/...安装到/home/yeshen/yeshen-disk目录 */
+make INSTALL_MOD_PATH=/home/yeshen/yeshen-disk modules_install -j8
+```
+
+#### 6.4.3 preloader和uboot
+
+```c
+/******************************************************************************
+ * 环境 -- ubuntu14.04
+ * 版本 -- 2013.01
+ * 编译工具链 -- 交叉4.9
+ * 注意 -- 只是编译，无法直接在sd卡中替换
+ ******************************************************************************/
+
+export CROSS_COMPILE=/home/yeshen/yezheng/socfpga/toolchain/gcc-linaro-arm-linux-gnueabihf-4.9-2014.09_linux/bin/arm-linux-gnueabihf-
+export ARCH=arm
+
+make mrproper
+make socfpga_cyclone5_config
+make 
+```
+
+
+#### 6.4.4 实时内核
+
+```c
+/******************************************************************************
+ * 环境 -- ubuntu14.04
+ * kernel版本 -- 3.10
+ * 编译kernel工具链 -- 交叉4.9
+ ******************************************************************************/
+
+/* 首先切换到kernel目录 */
+cd ~/yezheng/socfpga/linux-socfpga-socfpga-3.10-ltsi-rt
+
+/* 导出环境变量 */
+export CROSS_COMPILE=/home/yeshen/yezheng/socfpga/toolchain/gcc-linaro-arm-linux-gnueabihf-4.9-2014.09_linux/bin/arm-linux-gnueabihf-
+export ARCH=arm
+export PATH=/home/yeshen/yezheng/socfpga/u-boot-socfpga/tools:$PATH
+
+/* 大清洗 */
+make distclean
+
+/* 配置 */
+make socfpga_defconfig
+
+/* 编译内核 */
+make zImage -j8
+//make -j8 zImage 2>&1 | tee ../linux-rt-log.txt
+make uImage LOADADDR=0x8000 -j8
+
+/* 编译设备树 */
+make socfpga_cyclone5.dtb -j8
+
+/* 编译模块 */
+make modules -j8
+
+/* 安装模块，将包含模块的lib/modules/...安装到/home/yeshen/yeshen-disk目录 */
+make INSTALL_MOD_PATH=/home/yeshen/yeshen-disk modules_install -j8
+```
+
 
 
