@@ -213,7 +213,7 @@ fatload mmc 01 $fpgadata soc_system.rbf;fpga load 0 $fpgadata $filesize;run brid
 #### 6.1 挂载nfs
 
 ```c
-mount -t nfs -o nolock 192.168.34.90:/home/hanglory/nfs_share /root/nfs
+mount -t nfs -o nolock 192.168.34.131:/home/hanglory/nfs_share /root/nfs
 ```
 
 #### 6.2 ssh

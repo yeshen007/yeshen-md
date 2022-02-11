@@ -5,7 +5,7 @@
 Documentation/devicetree/bindings/leds/leds-gpio.txt
 Documentation/devicetree/bindings/gpio/gpio-altera.txt
 
-### **步骤：**
+### gpio调试
 
 #### 1.修改添加pinctrl和gpio设备树
 
@@ -239,5 +239,16 @@ arm-linux-gnueabihf-gcc led-test.c -o led-test
 
 
 
-
 ##### 5.3 特殊gpio44测试用例
+
+
+
+
+### i2c1调试
+
+```c
+
+```
+
+
+
