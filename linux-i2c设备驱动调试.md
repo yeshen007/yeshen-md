@@ -6,20 +6,20 @@
 
 ​		本次i2c设备驱动实验在nano开发板上运行，测试的i2c设备是板上的adxl345 gsensor。如图所示为adxl345芯片手册的引脚描述。其中13号引脚和14号引脚分别对应i2c的sda和scl，当运行i2c测试的时候，通过示波器接地端接2号引脚，另外一端接13或14号引脚就能采样到sda或scl的电平波形。
 
-![](E:\叶神文档\Markdown及其pdf\pictures\i2c0.PNG)		下面是adxl345的i2c模式描述，当cs引脚接到芯片供应电压VDD时，adxl345就选中i2c模式；当ALT ADDRESS引脚为高电平时，设备的i2c地址为0x3a；当ALT ADDRESS引脚为低电平时，设备的i2c地址为0x53。
+![](pictures\i2c0.PNG)		下面是adxl345的i2c模式描述，当cs引脚接到芯片供应电压VDD时，adxl345就选中i2c模式；当ALT ADDRESS引脚为高电平时，设备的i2c地址为0x3a；当ALT ADDRESS引脚为低电平时，设备的i2c地址为0x53。
 
-![](E:\叶神文档\Markdown及其pdf\pictures\i2c1.PNG)
+![](pictures\i2c1.PNG)
 
 #### 2、原理图分析
 ​		然后看nano开发板的adxl345部分的原理图连接，cs引脚接到l了芯片供应电压VDD，因此该设备选中了i2c模式，并且ALT ADDRESS引脚电压为低电平，因此设备地址为0x53，在通讯过程中会左移一位再加上一位表示读或者写得到8位的地址0xa6或者0xa7。
 
-![](E:\叶神文档\Markdown及其pdf\pictures\i2c2.PNG)		
+![](pictures\i2c2.PNG)		
 
 ### 二、驱动程序框架与编写
 
 #### 1、驱动框架
 
-![](E:\叶神文档\Markdown及其pdf\draw\i2c frame .svg)
+![](draw\i2c frame .svg)
 
 ​		linux的i2c架构如上图所示，应用程序通过访问设备文件经过内核空间的i2c驱动访问i2c设备。重点关注内核空间的i2c驱动架构，分为3个组成部分。
 
@@ -247,7 +247,7 @@ static int adxl345_release(struct inode *inode, struct file *file)
 
 #### 1、芯片手册时序图
 
-![](E:\叶神文档\Markdown及其pdf\pictures\i2c3.PNG)
+![](pictures\i2c3.PNG)
 
 ​		adxl345支持四种i2c传输模式，分别是单字节写，多字节写，单字节读，多字节读四种模式，它们的时序如上图所示，比较清晰明朗，不再缀诉。
 
@@ -305,18 +305,18 @@ int  main(void)
 
 ##### 2.1 scl波形
 
-![](E:\叶神文档\Markdown及其pdf\pictures\scope_00.png)
+![](pictures\scope_00.png)
 
 ​		从以上通过示波器测得的scl波形可以知道一个周期大约80微秒。
 
 ##### 2.2 sda波形
 
-![](E:\叶神文档\Markdown及其pdf\pictures\scope_3.png)
+![](pictures\scope_3.png)
 
 ​		以上是一个完整的单字节数据传送的sda波形时序图。接下来放大分析得到以下：
 
-![](E:\叶神文档\Markdown及其pdf\pictures\scope_4.png)
+![](pictures\scope_4.png)
 
-![](E:\叶神文档\Markdown及其pdf\pictures\scope_5.png)
+![](pictures\scope_5.png)
 
 ​		从以上时序分析得出这是一个单字节写时序，向地址为0x53的设备(即adxl345)的地址为0x1e的寄存器中写入0xeb。

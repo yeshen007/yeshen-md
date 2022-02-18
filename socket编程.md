@@ -12,7 +12,7 @@
 
 ​		下面图表示了一个客户端-服务器之间的连接：
 
-![](socket编程/Snipaste_2020-08-04_14-28-18.png)
+![](pictures/Snipaste_2020-08-04_14-28-18.png)
 
 
 
@@ -20,7 +20,7 @@
 
 ​		UDP是没有连接的协议，因此只需在通信两端分别创建socket并绑定对应的IP和端口号后即可通信。下图就是UDP编程模型的函数调用流程。本文实现的一个udp服务器和客户端通信就是按下面模型，客户端和服务器都处于死循环中，每个循环客户端从标准输入接收数据发送给服务器，服务器接收客户端发送过来的信息然后原样返回，客户端收到服务器的回送信息后输出到标准输出。
 
-![](socket编程/Snipaste_2020-08-06_09-32-20.png)
+![](pictures/Snipaste_2020-08-06_09-32-20.png)
 
 #### 1、UDP服务器编程
 
@@ -165,7 +165,7 @@ static void udp_send(int sockfd, struct sockaddr *pservaddr, socklen_t servlen)
 
 #### 3、现象
 
-![](socket编程/Snipaste_2020-08-06_17-12-48.png)
+![](pictures/Snipaste_2020-08-06_17-12-48.png)
 
 ​		以上是实验现象，分别从键盘输入12345和abcdefghijk发送给udp服务器，服务器原样返回。
 
@@ -175,7 +175,7 @@ static void udp_send(int sockfd, struct sockaddr *pservaddr, socklen_t servlen)
 
 #### 1、TCP通用编程模型
 
-![](socket编程/Snipaste_2020-08-10_09-33-24.png)
+![](pictures/Snipaste_2020-08-10_09-33-24.png)
 
 ##### 1.1 监听和连接
 
@@ -216,7 +216,7 @@ int listen(int sockfd, int backlog);
 int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
 ```
 
-![](socket编程/Snipaste_2020-08-10_11-06-20.png)
+![](pictures/Snipaste_2020-08-10_11-06-20.png)
 
 ##### 1.2 收发数据
 
@@ -226,7 +226,7 @@ int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
 
 ​		关闭连接通常情况时客户端主动关闭，服务器被动关闭。状态图如下：
 
-![](socket编程/Snipaste_2020-08-10_11-16-02.png)
+![](pictures/Snipaste_2020-08-10_11-16-02.png)
 
 #### 2、 TCP服务器编程	
 ​		tcp服务器通常需要能够同时处理多个连接，有典型的三种模式：
@@ -378,6 +378,6 @@ static void tcp_send(int sockfd)
 }
 ```
 
-![](socket编程/Snipaste_2020-08-10_20-19-19.png)
+![](pictures/Snipaste_2020-08-10_20-19-19.png)
 
 ​		上图测试结果验证了代码的正确性。

@@ -64,11 +64,11 @@
 
 ## 3.现象
 
-![](E:\叶神文档\Markdown及其pdf\pictures\通过串口烧写main.img镜像并启动1.PNG)
+![](pictures\通过串口烧写main.img镜像并启动1.PNG)
 
 <center>图1 串口工具发送窗口</center>
 
-![](E:\叶神文档\Markdown及其pdf\pictures\通过串口烧写main.img镜像并启动2.PNG)
+![](pictures\通过串口烧写main.img镜像并启动2.PNG)
 
 <center>图2 </center>
 

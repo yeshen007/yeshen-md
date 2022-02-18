@@ -143,10 +143,9 @@ MODULE_LICENSE("GPL v2");
 
 ```
 
-
 ### 2.简要说明
 
-![](pictures\1.PNG)![](\2.PNG)
+![](pictures/Snipaste_2022-02-18_14-42-06.jpg)
 
 
 Kobject的核心功能是：保持一个引用计数，当该计数减为0时，自动释放Kobject所占用的meomry空间。操作过程如上图所示：

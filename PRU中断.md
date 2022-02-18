@@ -2,17 +2,17 @@
 
 **芯片手册pru中断相关架构图**
 
-![](PRU中断/Snipaste_2020-10-08_13-50-39.png)
+![](pictures/Snipaste_2020-10-08_13-50-39.png)
 
-![](PRU中断/Snipaste_2020-10-08_13-51-57.png)
+![](pictures/Snipaste_2020-10-08_13-51-57.png)
 
-![](E:\叶神文档\Markdown及其pdf\pictures\Snipaste_2020-10-08_10-14-05.png)
+![](pictures\Snipaste_2020-10-08_10-14-05.png)
 
-![](E:\叶神文档\Markdown及其pdf\pictures\Snipaste_2020-10-08_10-19-10.png)
+![](pictures\Snipaste_2020-10-08_10-19-10.png)
 
-![](PRU中断/Snipaste_2020-10-08_11-31-18.png)
+![](pictures/Snipaste_2020-10-08_11-31-18.png)
 
-![](PRU中断/Snipaste_2020-10-08_11-39-57.png)
+![](pictures/Snipaste_2020-10-08_11-39-57.png)
 
 
 
@@ -643,6 +643,6 @@ int KpaNicTaskReceive(void* hArg)
 **测试结果**
 
 ​		先insmod pru_fw_download-03patch.ko，然后./prutest_patch得到如下结果：
-![](PRU中断/Snipaste_2020-11-04_09-09-01.png)
+![](pictures/Snipaste_2020-11-04_09-09-01.png)
 
 ​		结果显示正确。

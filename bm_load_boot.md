@@ -1,4 +1,4 @@
-#AMP双核方式加载启动bm过程#
+# AMP双核方式加载启动bm过程
 
 	/* common\spl\spl.c */
 	(1)amp_share_param_init();	//0x1E100000,u-boot, bare metal, linux的共享内存区域地址 
@@ -19,8 +19,7 @@
 	
 	(9)spl_mmc_load_image();	//将u-boot镜像加载到sdram中
 
-
-###(1)amp\_share\_param\_init()###
+### (1)amp\_share\_param\_init()
 
 	void amp_share_param_init(void)
 	{
@@ -29,15 +28,15 @@
 
 将共享内存地址asp(0x1E100000)清零,该地址是u-boot,bm,linux的一个共享参数内存区域。
 
-###(2)load\_bm\_start()###
-	void load_bm_start(void)
-	{
-		reset_timer();
-		asp->load_bm_start = get_timer(0);
-	}
+### (2)load\_bm\_start()
+​	void load_bm_start(void)
+​	{
+​		reset_timer();
+​		asp->load_bm_start = get_timer(0);
+​	}
 使用定时器测量加载镜像时间, 获取当前开始时间点
 
-###(3)spl\_mmc\_probe()###
+### (3)spl\_mmc\_probe()
 **初始化sd/mmc控制器和设备**
 
 	struct mmc * spl_mmc_probe(void)
@@ -65,7 +64,7 @@
 	return mmc;
 	}
 
-####(3.1)mmc_initialize(gd->bd)####
+#### (3.1)mmc_initialize(gd->bd)
 **注册设备**
 
 初始化一个mmc设备链表&mmc_devices,初始化mmc设备号为0
@@ -178,11 +177,10 @@
 		return 0;
 	}
 
-####(3.2)find\_mmc\_device(0)####
+#### (3.2)find\_mmc\_device(0)
 **从设备链表&mmc_devices中查找设备号为0的sd/mmc设备**
 
-
-####(3.3)mmc_init(mmc)####
+#### (3.3)mmc_init(mmc)
 **sd/mmc控制器和设备的真正初始化**
 
 	int mmc_init(struct mmc *mmc)
@@ -240,7 +238,7 @@
 		return err;
 	}
 
-###(4)spl\_mmc\_load\_bm\_image\_mbr()###
+### (4)spl\_mmc\_load\_bm\_image\_mbr()
 
 	void spl_mmc_load_bm_image_mbr(void)
 	{
@@ -261,7 +259,7 @@
 		}
 	}
 
-###(7)boot\_bm\_on\_cpu1()###
+### (7)boot\_bm\_on\_cpu1()
 
 	void boot_bm_on_cpu1(void)
 	{
@@ -287,7 +285,7 @@
 	
 	}
 
-###(8)cpu0\_wait\_cpu1\_load\_rbf()###
+### (8)cpu0\_wait\_cpu1\_load\_rbf()
 
 	int cpu0_wait_cpu1_load_rbf(void)
 	{
@@ -304,7 +302,7 @@
 	
 	}
 
-###(9)spl\_mmc\_load\_image()###
+### (9)spl\_mmc\_load\_image()
 
 	void spl_mmc_load_image(void)
 	{
@@ -365,15 +363,8 @@
 
 
 
+# 疑点
 
-
-
-
-
-
-
-
-#疑点
 - dwmci\_writel(host, DWMCI\_TMOUT, 0xFFFFFFFF);	//dw\_mmc.c
 - mmc->block\_dev.if\_type = IF\_TYPE\_MMC;		//mmc.c
 - mmc->bus\_width等于1，而主机为4（已解决，在mmc\_startup(mmc)中设置为4）

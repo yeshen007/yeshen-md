@@ -98,13 +98,13 @@ when come to cacheable,L1 would always be in inner,L2 might be inner or outer
 ### Other  Misc
 对于普通内存，还产生一个问题，就是读写操作可能会经过缓存，你不知道数据是否最终写到了内存中。通常我们使用clean操作来刷缓存。但是刷缓存本身是个模糊的概念，缓存存在多级，有些在处理器内，有些在总线之后，到底刷到哪里算是终结呢？还有，为了保证一致性，刷的时候是不是需要通知别的处理器和缓存？**为了把这些问题规范化，ARM引入了Point of Unification/Coherency，Inner/OuterCacheable和Inner/Outer/Non Shareable的概念**。
 
-![](C:\Users\Administrator\Desktop\Markdown\pictures\11.png)
+![](pictures\11.png)
 
 **PoU**是指，对于某一个核Master，附属于它的指令缓存，数据缓存和TLB，如果在某一点上，它们能看到一致的内容，那么这个点就是PoU。如上图右侧，MasterB包含了指令缓存，数据缓存和TLB，还有二级缓存。指令缓存，数据缓存和TLB的数据交换都建立在二级缓存，此时二级缓存就成了PoU。而对于上图左侧的MasterA，由于没有二级缓存，指令，数据缓存和TLB的数据交换都建立在内存上，所以内存成了PoU。
 
 **PoC**是指，对于系统中所有Master（注意是所有的，而不是某个核），如果存在某个点，它们的指令，数据缓存和TLB能看到同一个源，那么这个点就是PoC。如上图右侧，二级缓存此时不能作为PoC，因为MasterC在它的范围之外，直接访问内存。所以此时内存是PoC。在左图，由于只有一个Master，所以内存是PoC。
 
-![](C:\Users\Administrator\Desktop\Markdown\pictures\12.png)
+![](pictures\12.png)
 
 有了**PoU**和**PoU**这两个定义，我们就可以指定缓存操作和读写指令到底发到哪个范围。比如在上图的系统上，有两组A15，每组四个核，组内含二级缓存。系统的PoC在内存，而A15的PoU分别在它们自己组内的二级缓存上。在**某个A15上执行Clean清指令缓存，范围指定PoU**。显然，所有四个A15的一级指令缓存都会被清掉。那么其他的各个Master是不是受影响？那就要用到**Inner/Outer/Non Shareable**。
 

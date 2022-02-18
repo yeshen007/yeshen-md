@@ -254,7 +254,7 @@ int main(int argc, char *argv[])
 
 # 三、测试结果
 
-![](E:\叶神文档\Markdown及其pdf\pictures\led.PNG)
+![](pictures\led.PNG)
 
 ​		从上图测试结果可以看出：驱动正常运行。
 

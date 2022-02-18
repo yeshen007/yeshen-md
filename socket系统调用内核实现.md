@@ -855,7 +855,7 @@ static int inet_csk_wait_for_connect(struct sock *sk, long timeo)
 
 #### 5.1 connect函数调用主要过程概图
 
-![](socket系统调用内核实现/Snipaste_2020-08-29_08-50-24.png)
+![](pictures/Snipaste_2020-08-29_08-50-24.png)
 
 #### 5.2 connect详细处理过程
 

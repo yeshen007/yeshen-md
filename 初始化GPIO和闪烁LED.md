@@ -1,6 +1,6 @@
 # </center>初始化GPIO和闪烁LED<center>
 
-## 
+## 一.流程
 
 1.通过硬件原理图看接到使用的LED是哪个GPIO（在soc开发板使用GPIO53）
 

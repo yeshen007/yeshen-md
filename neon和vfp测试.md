@@ -8,9 +8,9 @@
 2. cpu1收到中断后会触发irq异常，最后会进入之前注册的中断处理函数，然后将cpu1控制的led点亮，接着计算0x8000次的单字普通整数加法和0x8000次的单字普通整数减法，然后将cpu1控制的led熄灭，然后触发相应的软中断给cpu0。
 3. 重新回到第1步
 
-![](E:\叶神文档\Markdown及其pdf\pictures\neond_no.jpg)
+![](pictures\neond_no.jpg)
 <center>图1 普通整数加减法运算</center>
-![](E:\叶神文档\Markdown及其pdf\pictures\neond.jpg)
+![](pictures\neond.jpg)
 <center>图2 neon双字整数加减法运算</center>
 
 从以上测试结果看出neon双字整数加减法运算速度是普通单字整数加减法运算速度的126/83=1.5倍
@@ -23,9 +23,9 @@
 2. cpu1收到中断后会触发irq异常，最后会进入之前注册的中断处理函数，然后将cpu1控制的led点亮，接着计算0x8000次的单字普通整数加法和0x8000次的单字普通整数减法，然后将cpu1控制的led熄灭，然后触发相应的软中断给cpu0。
 3. 重新回到第1步
 
-![](E:\叶神文档\Markdown及其pdf\pictures\neonq_no.jpg)
+![](pictures\neonq_no.jpg)
 <center>图3 普通整数加减法运算</center>
-![](E:\叶神文档\Markdown及其pdf\pictures\neonq.jpg)
+![](pictures\neonq.jpg)
 <center>图4 neon四字整数加减法运算</center>
 从以上测试结果看出neon双字整数加减法运算速度是普通单字整数加减法运算速度的126/42=3倍
 
@@ -36,9 +36,9 @@
 2. cpu1收到中断后会触发irq异常，最后会进入之前注册的中断处理函数，然后将cpu1控制的led点亮，接着计算0x8000次的单字普通浮点乘法和0x8000次的单字普通浮点除法，然后将cpu1控制的led熄灭，然后触发相应的软中断给cpu0。
 3. 重新回到第1步
 
-![](E:\叶神文档\Markdown及其pdf\pictures\vfp_no.jpg)
+![](pictures\vfp_no.jpg)
 <center>图5 普通整数加减法运算</center>
-![](E:\叶神文档\Markdown及其pdf\pictures\vfp.jpg)
+![](pictures\vfp.jpg)
 <center>图6 普通整数加减法运算</center>
 
 从以上测试结果看出neon双字整数加减法运算速度是普通单字整数加减法运算速度的

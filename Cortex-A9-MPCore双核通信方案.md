@@ -1,6 +1,6 @@
 ## 一. Cortex-A9 MPCore双核通信方案总体流程
 
-![](E:\叶神文档\Markdown及其pdf\pictures\a9double.png)
+![](pictures\a9double.png)
 
 <center>图1 双核通信方案流程</center>
 
@@ -51,7 +51,7 @@
 
 ### **1. 物理内存划分**
 
-![](E:\叶神文档\Markdown及其pdf\pictures\a9phy.png)
+![](pictures\a9phy.png)
 
 <center>图2 物理内存分布</center>
 
@@ -71,13 +71,13 @@
 
 ### **2. 0核裸机虚拟地址映射**
 
-![](E:\叶神文档\Markdown及其pdf\pictures\cpu0vir.png)
+![](pictures\cpu0vir.png)
 
 <center>图3 0核裸机虚拟地址映射</center>
 
 ### **3. 1核裸机虚拟地址映射**
 
-![](E:\叶神文档\Markdown及其pdf\pictures\core1vir.png)
+![](pictures\core1vir.png)
 
 <center>图4 1核裸机虚拟地址映射</center>
 
@@ -85,7 +85,7 @@
 
 ## 三. 测试方案设计
 
-![](E:\叶神文档\Markdown及其pdf\pictures\a9plan.png)
+![](pictures\a9plan.png)
 
 <center>图5 双核通信测试流程</center>
 
@@ -113,7 +113,7 @@
 
 **1.1 无缓存使能**
 
-![](E:\叶神文档\Markdown及其pdf\pictures\60k-ddr-n.jpg)
+![](pictures\60k-ddr-n.jpg)
 <center>图6 无缓存使能</center>
 
 读写数据大小：60K
@@ -127,7 +127,7 @@
 
 **1.2 L1缓存使能**
 
-![](E:\叶神文档\Markdown及其pdf\pictures\60k-ddr-L.jpg)
+![](pictures\60k-ddr-L.jpg)
 <center>图7 L1缓存使能</center>
 
 读写数据大小：60K
@@ -141,7 +141,7 @@
 
 **1.3 L1、L2缓存使能**
 
-![](E:\叶神文档\Markdown及其pdf\pictures\60k-ddr-LL.jpg)
+![](pictures\60k-ddr-LL.jpg)
 <center>图8 L1、L2缓存使能</center>
 
 读写数据大小：60K
@@ -156,7 +156,7 @@
 ### **2. SRAM读写速率测试**
 **2.1 无缓存使能**
 
-![](E:\叶神文档\Markdown及其pdf\pictures\60k-sram-n.jpg)
+![](pictures\60k-sram-n.jpg)
 <center>图9 无缓存使能</center>
 
 读写数据大小：60K
@@ -168,7 +168,7 @@
 
 **2.2 L1缓存使能**
 
-![](E:\叶神文档\Markdown及其pdf\pictures\60k-sram-L.jpg)
+![](pictures\60k-sram-L.jpg)
 <center>图10 L1缓存使能</center>
 
 读写数据大小：60K
@@ -180,7 +180,7 @@
 
 **2.3 L1、L2缓存使能**
 
-![](E:\叶神文档\Markdown及其pdf\pictures\60k-sram-LL.jpg)
+![](pictures\60k-sram-LL.jpg)
 <center>图11 L1、L2缓存使能</center>
 
 读写数据大小：60K
@@ -194,7 +194,7 @@
 
 ### **3. 速率对比分析**
 
-![](E:\叶神文档\Markdown及其pdf\pictures\speedtable.png)
+![](pictures\speedtable.png)
 <center>图12 速度对比</center>
 ​		根据前文计算的结果绘制出速度对比表格。上表的结果和理论保持一致，对于同样一种存储设备，开了缓存后的读写速度比没有开缓存的情况下大大提高，开了L1和L2比只开L1要快，sram的读写速度比ddr的读写速度快。唯一看起来有点不太正常的现象是同样都使能了L1和L2的DDR和SRAM的读写速度看起来是一样的。其实这是因为读写buff的大小限制所导致的，因为sram只有64KB，这里使用了不超过该容量的60KB，而L2 cache的大小有512KB，因此读写过程中在L1中没有缓存到的数据会全部缓存到L2中，因为这60KB地址是连续的，每一次对内存的写操作不会发生驱逐，能全部写到缓存当中。因此在buff大小不超过512KB且连续的情况下存储设备的差异对L1和L2缓存都使能的读写速率没有影响。
 
@@ -210,7 +210,7 @@
 
 ​		首先在cpu1中触发SGI0给cpu0，然后延时500毫秒再次触发SGI3给cpu0。以下是串口的输出打印信息：
 
-![](E:\叶神文档\Markdown及其pdf\pictures\4.1.PNG)
+![](pictures\4.1.PNG)
 
 ​		对以上串口打印信息的解释：在cpu0接收到SGI0后进入SGI0中断处理函数，即先延时两秒，在延时过程中又接收到了SGI3，但是SGI3权限比SGI0低，因此cpu0继续在SGI0中断处理函数中处理完剩下的延时然后打印gic sgi0 handler done，之后再处理SGI3打印gic sgi3 handler done。
 
@@ -220,7 +220,7 @@
 
 ​		首先在cpu1中触发SGI0给cpu0，然后延时500毫秒再次触发SGI2给cpu0。以下是串口的输出打印信息：
 
-![](E:\叶神文档\Markdown及其pdf\pictures\4.2.PNG)
+![](pictures\4.2.PNG)
 
 ​		对以上串口打印信息的解释：在cpu0接收到SGI0后进入SGI0中断处理函数，即先延时两秒，在延时过程中又接收到了SGI2，但是SGI2和SGI0相同，cpu0继续在SGI0中断处理函数中处理完剩下的延时然后打印gic sgi0 handler done，之后再处理SGI2打印gic sgi2 handler done，可见相同的权限也无法抢占。
 
@@ -230,7 +230,7 @@
 
 ​		首先在cpu1中触发SGI0给cpu0，然后延时500毫秒再次触发SGI1给cpu0。以下是串口的输出打印信息：
 
-![](E:\叶神文档\Markdown及其pdf\pictures\4.3.PNG)
+![](pictures\4.3.PNG)
 
 ​		对以上串口打印信息的解释：在cpu0接收到SGI0后进入SGI0中断处理函数，即先延时两秒，在延时过程中又接收到了SGI1，但是SGI1权限比SGI0高，因此cpu0在SGI0中断处理函数处理延时没有结束的情况下被SGI1抢占，进入SGI1中断处理函数打印gic sgi1 handler done返回继续处理SGI0中断，处理完后打印gic sgi0 handler done。
 
@@ -240,7 +240,7 @@
 
 ​		首先在cpu1中触发SGI0给cpu0，然后每延时200毫秒触发一次SGI0给cpu0，触发5次，即一秒钟内每隔200毫秒发送一次。以下是串口的输出打印信息：
 
-![](E:\叶神文档\Markdown及其pdf\pictures\4.4.PNG)
+![](pictures\4.4.PNG)
 
 ​		对以上串口打印信息的解释：在cpu0接收到SGI0后进入SGI0中断处理函数，即先延时两秒，在延时过程中又接收到了多个SGI0，但是从输出信息中只看到了两次中断处理，这是因为同种类型中断在任意时刻最多只能有一个处于活动(active)状态，即正在处理，另外最多只能有一个处于悬挂(pending)状态，即在排队等待处理，之后到达的都会被丢弃，这正符合图中的输出信息。
 

@@ -1157,16 +1157,19 @@
 
 
 
-###SPL疑点
+### SPL疑点
+
 - writel(TIMER\_LOAD\_VAL, &timer\_base->curr\_val);	//不是只读的吗？   arch\arm\cpu\armv7\socfpga\timer.c
 - I/O如何配置硬件参数 (Quartus® II得到？)
 - BOOTSEL(BSEL)和CLKSEL(CSEL)引脚怎么在引导rom之前设置
 
-###SPL回头分析
+### SPL回头分析
+
 - 中断详细分析
 - 定时器详细分析
 
-###BM疑点
+### BM疑点
+
 - .map文件
 - @@ enable smp
 
@@ -1179,16 +1182,17 @@
 
 - TTBCR怎么控制使用ttbr0或者ttbr1
 
-###BM回头分析
+### BM回头分析
+
 - 双核测试
 - /* 开mmu,虚拟地址开始作用 */处的内敛汇编
 
+### U-BOOT疑点
 
-###U-BOOT疑点
 - 环境变量bootargs和baudrate，CONFIG_BAUDRATE的波特率参数不一样，不知道有什么影响
 - gd->bd->bi\_boot\_params = 0x00000100(0x00000100是协议好的tag或者设备树地址吗)
 
-###U-BOOT回头分析
+### U-BOOT回头分析
 - init\_sequence中的serial\_init和dram\_init(arch\arm\lib\board.c\board\_init\_f())
 - .rel.dyn和.dynsym重定位(重定位.zip和深入理解bootloader)
 - main_loop()

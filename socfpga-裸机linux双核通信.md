@@ -142,7 +142,7 @@ make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- LOADADDR=0x8000 dtbs -j4
 ```
 
 ​		在sourceinsignt中ctrl+/搜索www.embest-tech.com可以得到如下：
-![](socfpga 裸机linux双核通信/Snipaste_2020-12-17_09-51-36.png)
+![](pictures/Snipaste_2020-12-17_09-51-36.png)
 
 #### 2.主要修改部分
 
@@ -233,7 +233,7 @@ void board_init_r(gd_t *dummy1, ulong dummy2)
 ### 四、kernel改造
 
 ​		amp kernel修改的文件列表如下，另外还新增一个**amp.c**在目录drivers/char中，是测试双核通信的字符驱动。内核的修改主要有smp、中断和内存映射三部分，在下文描述。
-![](socfpga 裸机linux双核通信/Snipaste_2020-12-17_09-07-19.png)
+![](pictures/Snipaste_2020-12-17_09-07-19.png)
 
 #### 1.内存部分改造
 

@@ -2,7 +2,7 @@
 
 ## 一、i2c驱动框架
 
-![](linux i2c驱动子系统分析/i2c_frame.svg)
+![](pictures/i2c_frame.svg)
 
 ​		linux的i2c驱动架构如上图所示，应用程序通过访问设备文件经过内核空间的i2c驱动访问i2c设备。重点关注内核空间的i2c驱动架构，分为3个组成部分。
 

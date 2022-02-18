@@ -25,7 +25,7 @@
 
 ​		仅靠cpu是无法实现ldrex和strex指令的，它需要独占监视器的支持。独占监视器是一个只有开放(open)和独占(exclusive)两种状态的简单状态机，其结构如下：
 
-![](E:\叶神文档\Markdown及其pdf\draw\monitors.svg)
+![](draw\monitors.svg)
 
 ​															图 多核系统下的全局监视器和本地监视器
 
