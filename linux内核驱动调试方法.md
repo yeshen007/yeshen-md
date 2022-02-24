@@ -508,10 +508,13 @@ Disassembly of section .text:
 ```c
 Kernel hacking --->
     ....
-    [*] Compile the kernel with debug info
+    Compile-time checks and compiler options  --->
+    	[*] Compile the kernel with debug info
     ...
-    [*] KGDB: kernel debugger --->
-    	<*> KGDB: use kgdb over the serial console
+    Generic Kernel Debugging Instruments  --->
+   		[*] KGDB: kernel debugger --->
+ 		<*> KGDB: use kgdb over the serial console
+    	...	
     ...	
 ```
 
@@ -546,6 +549,7 @@ kgdboc=ttyS0,57600 kgdbwait
 - m   在控制台上显示内存信息。
 - p    在控制台上显示寄存器。
 - t     在控制台上dump出一系列任务信息。
+- g    进入kgdb调试模式，将串口留给kgdb独占。
 
 
 
