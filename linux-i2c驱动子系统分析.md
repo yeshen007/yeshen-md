@@ -549,4 +549,4 @@ i2c_new_device(struct i2c_adapter *adap, struct i2c_board_info const *info)
 ## 四、I2C核心层和I2C设备驱动
 
 ​		i2c核心层为I2C设备驱动和I2C主机控制器驱动提供统一的api，主要是给i2c设备驱层和控制器驱动层提供注册和注销方法，为i2c设备驱层提供统一的通信接口等。它的作用是两者的桥梁，由内核实现，原理上并不复杂，核心思想就是设备模型，具体实现暂不分析。
-​		而对于I2C设备驱动的分析请看linux i2c设备驱动调试一文。
+​		而对于I2C设备驱动的分析请看**linux i2c设备驱动调试**一文。
