@@ -32,12 +32,13 @@ make -j12
 /* 公司版,可能要替换handoff和sopcinfo
  * 替换目录~/altera/15.0/embedded/examples/hardware/cv_soc_devkit_ghrd
  */
-cd ~/altera/15.0/embedded/examples/hardware/cv_soc_devkit_ghrd/software/spl_bsp
-make clean	
 cd ~/altera/15.0/embedded 
 ./embedded_command_shell.sh
+cd ~/altera/15.0/embedded/examples/hardware/cv_soc_devkit_ghrd/software/spl_bsp
+make clean	
 
 //下面的bsp-editor如果替换handoff和sopcinfo才需要
+//handoff和sopcinfo在~/altera/15.0/embedded/examples/hardware/cv_soc_devkit_ghrd
 cd ~/altera/15.0/embedded/examples/hardware/cv_soc_devkit_ghrd/software/spl_bsp 
 bsp-editor
 //generate,exit
@@ -213,7 +214,7 @@ fatload mmc 01 $fpgadata soc_system.rbf;fpga load 0 $fpgadata $filesize;run brid
 #### 6.1 挂载nfs
 
 ```c
-mount -t nfs -o nolock 192.168.34.195:/home/hanglory/nfs_share /root/nfs
+mount -t nfs -o nolock 192.168.34.119:/home/hanglory/nfs_share /root/nfs
 ```
 
 #### 6.2 ssh
