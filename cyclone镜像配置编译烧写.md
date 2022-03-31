@@ -151,7 +151,7 @@ Tftp下载rootfs：tftp 0x8000 rootfs.jffs2
     
 /* 烧写rbf到qspi 0x1400000*/
 擦除内存：mw.b 0x8000 0xff 0x800000
-Tftp下载rbf：tftp 0x8000 printerhead.rbf	//tftp 0x8000 printhead_v3.rbf
+Tftp下载rbf：tftp 0x8000 printhead_v3.rbf
 烧写rbf：sf update 0x8000 0x1400000 0x800000
 ```
 
@@ -214,7 +214,7 @@ fatload mmc 01 $fpgadata soc_system.rbf;fpga load 0 $fpgadata $filesize;run brid
 #### 6.1 挂载nfs
 
 ```c
-mount -t nfs -o nolock 192.168.34.119:/home/hanglory/nfs_share /root/nfs
+mount -t nfs -o nolock 192.168.33.111:/home/hanglory/nfs_share /root/nfs
 ```
 
 #### 6.2 ssh
