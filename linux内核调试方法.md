@@ -619,6 +619,8 @@ echo $1 > $debugfs/tracing/set_ftrace_pid		// 让函数跟踪器仅跟踪单个�
 echo function_graph > $debugfs/tracing/current_tracer	// 设置当前current_tracer追踪器为function_graph追踪器
 echo 5 > $debugfs/tracing/max_graph_depth				// 设置追踪深度
 echo functionname > $debugfs/tracing/set_ftrace_filter	// 可以设置指定的函数名
+//echo > $debugfs/tracing/set_ftrace_filter
+//echo functionname > $debugfs/tracing/set_graph_function
 echo 1 > $debugfs/tracing/tracing_on	 		// 开启跟踪
 ....	//运行一段时间
 echo 0 > $debugfs/tracing/tracing_on	 		// 关闭跟踪

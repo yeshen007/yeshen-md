@@ -21,7 +21,7 @@
 
 ### 二、PRELOADER启动UBOOT
 
-&emsp;&emsp;preloader进入到board_init_r函数后会加载启动uboot，如下所示，下面所展示的都是简化的代码，将不重要的代码分支和宏定义删除了。
+&emsp;&emsp;preloader进入到board_init_r（common/spl/spl.c）函数后会加载启动uboot，如下所示，下面所展示的都是简化的代码，将不重要的代码分支和宏定义删除了。
 
 ```c
 void board_init_r(gd_t *dummy1, ulong dummy2)

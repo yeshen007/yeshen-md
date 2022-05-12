@@ -30,7 +30,7 @@ make menuconfig
 make -j12
 
 /* 公司版,可能要替换handoff和sopcinfo
- * 替换目录~/altera/15.0/embedded/examples/hardware/cv_soc_devkit_ghrd
+ * 替换目录cd ~/altera/15.0/embedded/examples/hardware/cv_soc_devkit_ghrd
  */
 cd ~/altera/15.0/embedded 
 ./embedded_command_shell.sh
@@ -130,9 +130,9 @@ Tftp下载uboot：tftp 0x8000 preloader-mkpimage.bin
 烧写uboot：sf update 0x8000 0x00000 0x50000
 
 /* 烧写uboot到qspi 0x60000*/
-擦除内存：mw.b 0x8000 0xff 0x50000
+擦除内存：mw.b 0x8000 0xff 0x40000
 Tftp下载uboot：tftp 0x8000 u-boot.img
-烧写uboot：sf update 0x8000 0x60000 0x50000
+烧写uboot：sf update 0x8000 0x60000 0x40000
     
 /* 烧写zImage到qspi 0xa0000 */
 擦除内存：mw.b 0x8000 0xff 0x600000
@@ -214,7 +214,13 @@ fatload mmc 01 $fpgadata soc_system.rbf;fpga load 0 $fpgadata $filesize;run brid
 #### 6.1 挂载nfs
 
 ```c
-mount -t nfs -o nolock 192.168.33.111:/home/hanglory/nfs_share /root/nfs
+//启动后手动挂载到一个指定目录
+mount -t nfs -o nolock 192.168.34.48:/home/hanglory/nfs_share /root/nfs
+
+//bootloader阶段挂载为根文件系统
+bootcmd.nfs=run qspifpga; run bridge_enable_handoff; run qspiload; run nfsboot
+
+nfsboot=setenv bootargs console=ttyS0,115200 root=/dev/nfs rw ip=dhcp nfsroot=${nfsroot};bootz ${loadaddr} - ${fdtaddr}
 ```
 
 #### 6.2 ssh
@@ -265,7 +271,7 @@ $ sopc2dts --input soc_system.sopcinfo \
 
 ```
 
-#### 6.4 评估板3.10
+#### 6.4 3.10
 
 #### 6.4.1 buildroot
 
@@ -341,6 +347,8 @@ make INSTALL_MOD_PATH=/home/yeshen/yeshen-disk modules_install -j8
 
 export CROSS_COMPILE=/home/yeshen/yezheng/socfpga/toolchain/gcc-linaro-arm-linux-gnueabihf-4.9-2014.09_linux/bin/arm-linux-gnueabihf-
 export ARCH=arm
+
+cd ~/yezheng/socfpga/u-boot-socfpga
 
 make mrproper
 make socfpga_cyclone5_config
