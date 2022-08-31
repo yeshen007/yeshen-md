@@ -1,4 +1,4 @@
-## <center>初版双boot启动设计实现</center>
+## <center>双boot启动设计实现</center>
 
 [TOC]
 
@@ -271,7 +271,7 @@ secondboot=secondbootstag1;secondbootstag2
 /***********************************************************************************************
  * 				hanglory double boot
  * 				author yezheng
- *               hangloryboot.c
+ *               cmd_hangloryboot.c
  *********************************************************************************************/
 #define DEBUG
 .....

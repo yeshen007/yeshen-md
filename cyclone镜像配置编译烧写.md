@@ -7,7 +7,7 @@
 
 ```c
 /* preloader和uboot */
-~/yezheng/altera/15.0/embedded/examples/hardware/cv_soc_devkit_ghrd/software/spl_bsp
+~/altera/15.0/embedded/examples/hardware/cv_soc_devkit_ghrd/software/spl_bsp
 /* 内核和设备树 */
 ~/V3.0/linux-socfpga
 /* 根文件系统 */
@@ -49,7 +49,7 @@ make		//preloader-mkpimage.bin
 make uboot	//u-boot.img
 ```
 
-&emsp;&emsp;最后编译得到的spl和uboot镜像分别在`spl_bsp/uboot-socfpga/spl`和`spl_bsp/uboot-socfpga`中。但板子要用的spl是spl_bsp中的preloader-mkpimage.bin，而不是`spl_bsp/uboot-socfpga/spl`中的u-boot-spl.bin，用的uboot是`spl_bsp/uboot-socfpga`中的u-boot.img。
+&emsp;&emsp;最后编译得到的spl和uboot镜像分别在`spl_bsp/uboot-socfpga/spl`和`spl_bsp/uboot-socfpga`中。但板子要用的spl是**spl_bsp中的preloader-mkpimage.bin**，而不是`spl_bsp/uboot-socfpga/spl`中的u-boot-spl.bin，用的uboot是**spl_bsp/uboot-socfpga中的u-boot.img**。
 
 
 
@@ -133,7 +133,7 @@ Tftp下载uboot：tftp 0x8000 preloader-mkpimage.bin
 擦除内存：mw.b 0x8000 0xff 0x40000
 Tftp下载uboot：tftp 0x8000 u-boot.img
 烧写uboot：sf update 0x8000 0x60000 0x40000
-    
+   
 /* 烧写zImage到qspi 0xa0000 */
 擦除内存：mw.b 0x8000 0xff 0x600000
 Tftp下载zImage：tftp 0x8000 zImage
@@ -215,7 +215,7 @@ fatload mmc 01 $fpgadata soc_system.rbf;fpga load 0 $fpgadata $filesize;run brid
 
 ```c
 //启动后手动挂载到一个指定目录
-mount -t nfs -o nolock 192.168.34.48:/home/hanglory/nfs_share /root/nfs
+mount -t nfs -o nolock 192.168.26.127:/home/hanglory/nfs_share /root/nfs
 
 //bootloader阶段挂载为根文件系统
 bootcmd.nfs=run qspifpga; run bridge_enable_handoff; run qspiload; run nfsboot
