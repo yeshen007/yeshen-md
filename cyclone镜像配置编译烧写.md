@@ -115,8 +115,8 @@ make busybox
 
 ```c
 /* 在uboot命令行阶段设置环境变量和激活qspi flash */
-setenv ipaddr 192.168.34.150	//设置板子的ip，到内核会被重新设置我们不管，反正uboot阶段就是我们设置的
-setenv serverip 192.168.34.149 	//设置tftp服务器的ip，下载的是/home/hanglory/tftpboot中的文件   
+setenv ipaddr 192.168.26.111	//设置板子的ip，到内核会被重新设置我们不管，反正uboot阶段就是我们设置的
+setenv serverip 192.168.26.133 	//设置tftp服务器的ip，下载的是/home/hanglory/tftpboot中的文件   
   
 /* 激活qspi */   
 sf probe	
@@ -215,12 +215,15 @@ fatload mmc 01 $fpgadata soc_system.rbf;fpga load 0 $fpgadata $filesize;run brid
 
 ```c
 //启动后手动挂载到一个指定目录
-mount -t nfs -o nolock 192.168.26.127:/home/hanglory/nfs_share /root/nfs
+mount -t nfs -o nolock 192.168.26.133:/home/hanglory/nfs_share /root/nfs
 
 //bootloader阶段挂载为根文件系统
 bootcmd.nfs=run qspifpga; run bridge_enable_handoff; run qspiload; run nfsboot
-
+nfsroot=192.168.26.133:/home/hanglory/nfs_share/rootfs-best
 nfsboot=setenv bootargs console=ttyS0,115200 root=/dev/nfs rw ip=dhcp nfsroot=${nfsroot};bootz ${loadaddr} - ${fdtaddr}
+
+//制作nfs根文件系统
+正常制作得到tar然后解压
 ```
 
 #### 6.2 ssh
