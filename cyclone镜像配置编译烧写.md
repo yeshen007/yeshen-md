@@ -61,7 +61,7 @@ make distclean 或者 make clean //make clean就不需要配置,.config还在
 
 /* 配置 */
 cp yzconfig .config
-//make socfpga_defconfig
+//make socfpga_defconfig	
 make menuconfig
 
 /* 编译内核 */
@@ -216,14 +216,15 @@ fatload mmc 01 $fpgadata soc_system.rbf;fpga load 0 $fpgadata $filesize;run brid
 ```c
 //启动后手动挂载到一个指定目录
 mount -t nfs -o nolock 192.168.26.133:/home/hanglory/nfs_share /root/nfs
-
+mount -t debugfs none /sys/kernel/debug	//挂载debugfs 
+    
 //bootloader阶段挂载为根文件系统
 bootcmd.nfs=run qspifpga; run bridge_enable_handoff; run qspiload; run nfsboot
 nfsroot=192.168.26.133:/home/hanglory/nfs_share/rootfs-best
 nfsboot=setenv bootargs console=ttyS0,115200 root=/dev/nfs rw ip=dhcp nfsroot=${nfsroot};bootz ${loadaddr} - ${fdtaddr}
 
 //制作nfs根文件系统
-正常制作得到tar然后解压
+正常制作得到tar然后解压到/home/hanglory/nfs_share/rootfs-best
 ```
 
 #### 6.2 ssh
@@ -395,6 +396,31 @@ make modules -j8
 
 /* 安装模块，将包含模块的lib/modules/...安装到/home/yeshen/yeshen-disk目录 */
 make INSTALL_MOD_PATH=/home/yeshen/yeshen-disk modules_install -j8
+    
+    
+/******************************************************************************
+ * 环境 -- 公司服务器
+ * kernel版本 -- 5.4.161
+ * 编译kernel工具链 -- 公司服务器工具链
+ ******************************************************************************/    
+    
+/* 下载源码和补丁 */
+https://wiki.linuxfoundation.org/realtime/preempt_rt_versions	//补丁网站
+https://www.kernel.org/pub/		//内核网站
+
+/* 打补丁 */
+将补丁和源码文件夹放在同一级目录下
+cd到源码文件夹
+patch -p1 < ../xx.patch
+    
+/* 配置编译 */
+make distclean
+make socfpga_defconfig
+配置CONFIG_PREEMPT_RT
+配置CONFIG_HIGH_RES_TIMERS
+配置CONFIG_NO_HZ		//可能不用配这个
+make zImage -j8
+...
 ```
 
 
