@@ -248,36 +248,15 @@ ssh -l sshusr -p changedport sshdip
 exit
 ```
 
-#### 6.3 eds制作设备树
+#### 6.3 buildroot
 
 ```c
-/* 导出eds路径到环境变量$PATH */
-$ cd ~/altera/15.0/embedded/
-$ ./embedded_command_shell.sh
-
-/* 制作dts */
-$ cd ~/altera/15.0/embedded/examples/hardware/cv_soc_devkit_ghrd
-$ sopc2dts --input soc_system.sopcinfo \
- --output socfpga.dts --type dts \
- --board soc_system_board_info.xml \
- --board hps_common_board_info.xml \
- --bridge-removal all \
- --clocks
- 
-/* 编译dtb，不是用socfpga.dts，源和制作dts一样都是soc_system.sopcinfo */ 
-$ cd ~/altera/15.0/embedded/examples/hardware/cv_soc_devkit_ghrd
-$ sopc2dts --input soc_system.sopcinfo \
- --output socfpga.dtb --type dtb \
- --board soc_system_board_info.xml \
- --board hps_common_board_info.xml \
- --bridge-removal all \
- --clocks
 
 ```
 
-#### 6.4 3.10
+#### 6.4 altera提供的sdk
 
-#### 6.4.1 buildroot
+##### 6.4.1 buildroot
 
 ```c
 /******************************************************************************
@@ -302,7 +281,7 @@ make	//也许你很疑惑，我他妈也是啊，第一次会报错，第二次�
 
 ```
 
-#### 6.4.2 linux kernel
+##### 6.4.2 linux kernel
 
 ```c
 /******************************************************************************
@@ -339,7 +318,7 @@ make modules -j8
 make INSTALL_MOD_PATH=/home/yeshen/yeshen-disk modules_install -j8
 ```
 
-#### 6.4.3 preloader和uboot
+##### 6.4.3 preloader和uboot
 
 ```c
 /******************************************************************************
@@ -360,7 +339,9 @@ make
 ```
 
 
-#### 6.4.4 实时内核
+##### 6.4.4 实时内核
+
+> 注：altera论坛提供的已经打好preempt rt补丁的3.10内核
 
 ```c
 /******************************************************************************
@@ -397,11 +378,41 @@ make modules -j8
 /* 安装模块，将包含模块的lib/modules/...安装到/home/yeshen/yeshen-disk目录 */
 make INSTALL_MOD_PATH=/home/yeshen/yeshen-disk modules_install -j8
     
-    
+```
+
+##### 6.4.5 eds制作设备树
+
+```c
+/* 导出eds路径到环境变量$PATH */
+$ cd ~/altera/15.0/embedded/
+$ ./embedded_command_shell.sh
+
+/* 制作dts */
+$ cd ~/altera/15.0/embedded/examples/hardware/cv_soc_devkit_ghrd
+$ sopc2dts --input soc_system.sopcinfo \
+ --output socfpga.dts --type dts \
+ --board soc_system_board_info.xml \
+ --board hps_common_board_info.xml \
+ --bridge-removal all \
+ --clocks
+ 
+/* 编译dtb，不是用socfpga.dts，源和制作dts一样都是soc_system.sopcinfo */ 
+$ cd ~/altera/15.0/embedded/examples/hardware/cv_soc_devkit_ghrd
+$ sopc2dts --input soc_system.sopcinfo \
+ --output socfpga.dtb --type dtb \
+ --board soc_system_board_info.xml \
+ --board hps_common_board_info.xml \
+ --bridge-removal all \
+ --clocks
+```
+
+#### 6.5 手动打preempt rt补丁
+
+```c
 /******************************************************************************
  * 环境 -- 公司服务器
  * kernel版本 -- 5.4.161
- * 编译kernel工具链 -- 公司服务器工具链
+ * 编译kernel工具链 -- 公司服务器工具链7.5
  ******************************************************************************/    
     
 /* 下载源码和补丁 */
@@ -423,5 +434,44 @@ make zImage -j8
 ...
 ```
 
+#### 6.6 手动打xenomai补丁
+
+```c
+/******************************************************************************
+ * 环境 -- 公司服务器
+ * kernel版本 -- 4.19.82
+ * 编译kernel工具链 -- 公司服务器工具链7.5和自己下载的11.3.1都可以
+ ******************************************************************************/    
+    
+/* 下载源码和补丁 */
+https://www.kernel.org/pub/		//linux内核网站
+https://xenomai.org/downloads/xenomai/stable/latest/	//xenomai源码网站(cobalt补丁)
+https://xenomai.org/downloads/ipipe/	//ipipe补丁
+
+/* 打补丁 */
+将linux源码和xenomai源码(cobalt补丁)和ipipe补丁放在同一级目录下
+cd到xenomai源码文件夹
+./scripts/prepare-kernel.sh --linux=../linux-4.19.82 \
+	--ipipe=../ipipe-core-4.19.82-arm-6.patch --arch=arm
+    
+/* 配置编译已经打补丁的内核 */
+cd到linux内核目录
+make distclean
+make socfpga_defconfig
+配置Preemtiple Kernel			//这个配置应该是非xenomai状态下的抢占模式			
+配置CONFIG_HIGH_RES_TIMERS	//在socfpga_defconfig中已经配置了
+去掉配置CONFIG_MIGRATION	//通过警告下面的内存管理去掉内存规整
+make zImage -j8
+...
+     
+```
+
+#### 6.7 xenomai用户空间
+
+```c
+使用buildroot
+```
 
 
+
+#### 6.8 xenomai驱动
