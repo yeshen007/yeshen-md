@@ -251,7 +251,27 @@ exit
 #### 6.3 buildroot
 
 ```c
-
+/* 源码下载 */
+https://buildroot.org/download.html
+	Older versions can be downloaded from the release archive.	//其他版本
+        
+/* 配置，主要是工具链 */
+Toolchain
+	-> Toolchain type 	= External toolchain
+	-> Toolchain 		= Custom toolchain			//用户自己的交叉编译器
+	-> Toolchain origin	= Pre-installed toolchain		//预装的编译器
+	-> Toolchain path	= /home/hanglory/yezheng/gcc-arm-7.5-2019.12-x86_64-arm-linux-gnueabihf 
+	-> Toolchain prefix		= $(ARCH)-linux-gnueabihf 	//前缀
+	-> External toolchain gcc version  		= 7.x
+	-> External toolchain kernel headers series 	= 4.10.x		//交叉编译器的linux版本号
+	-> External toolchain C library 			= glibc/eglibc 
+	-> [*] Toolchain has SSP support? (NEW) 	//选中
+	-> [*] Toolchain has RPC support? (NEW) 	//选中
+	-> [*] Toolchain has C++ support? 		//选中
+	-> [*] Enable MMU support (NEW)  		//选中
+    
+注意：交叉编译器的内核版本号需要和真正的内核的版本号一样或者旧一点。交叉编译器的内核版本号在交叉编译器目录的version.h中#define LINUX_VERSION_CODE 264707以及KERNEL_VERSION(a,b,c) (((a)<<16) + ((b)<<8) + (c)),
+其中264707是十进制换成16进制是40a03,所以a是4,b是0a,c是03,所以版本号是4.10.03因此选4.10.x,而我们的内核是5.5,因此该编译器符合要求,如果编译器计算出来的版本号大于5.5那么就要换旧的编译器或者换新的内核。
 ```
 
 #### 6.4 altera提供的sdk
@@ -406,7 +426,7 @@ $ sopc2dts --input soc_system.sopcinfo \
  --clocks
 ```
 
-#### 6.5 手动打preempt rt补丁
+#### 6.5 preempt rt
 
 ```c
 /******************************************************************************
@@ -434,7 +454,9 @@ make zImage -j8
 ...
 ```
 
-#### 6.6 手动打xenomai补丁
+#### 6.6 xenomai
+
+##### 6.6.1 打xenomai补丁
 
 ```c
 /******************************************************************************
@@ -466,12 +488,27 @@ make zImage -j8
      
 ```
 
-#### 6.7 xenomai用户空间
+##### 6.6.2 xenomai用户空间
 
 ```c
-使用buildroot
+//使用buildroot
+Target packages  
+    -> Real-Time
+    	-> Xenomai Userspace
 ```
 
+##### 6.6.3 xenomai驱动
 
+```c
 
-#### 6.8 xenomai驱动
+```
+
+#### 6.7 toolchain
+
+```c
+http://releases.linaro.org/components/toolchain/binaries/
+https://www.linaro.org/downloads/			//较新
+	 Arm Developer website
+	 GNU Toolchain Integration Builds	//这个更通用感觉
+```
+
