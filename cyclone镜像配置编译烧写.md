@@ -268,10 +268,19 @@ Toolchain
 	-> [*] Toolchain has SSP support? (NEW) 	//选中
 	-> [*] Toolchain has RPC support? (NEW) 	//选中
 	-> [*] Toolchain has C++ support? 		//选中
-	-> [*] Enable MMU support (NEW)  		//选中
+	-> [*] Enable MMU support (NEW)  		//选中   
     
 注意：交叉编译器的内核版本号需要和真正的内核的版本号一样或者旧一点。交叉编译器的内核版本号在交叉编译器目录的version.h中#define LINUX_VERSION_CODE 264707以及KERNEL_VERSION(a,b,c) (((a)<<16) + ((b)<<8) + (c)),
 其中264707是十进制换成16进制是40a03,所以a是4,b是0a,c是03,所以版本号是4.10.03因此选4.10.x,而我们的内核是5.5,因此该编译器符合要求,如果编译器计算出来的版本号大于5.5那么就要换旧的编译器或者换新的内核。
+    
+/* 修改Makefile */
+.PHONY: target-post-image
+target-post-image: $(TARGETS_ROOTFS) target-finalize staging-finalize
+     @rm -f $(ROOTFS_COMMON_TAR)
+     $(Q)mkdir -p $(BINARIES_DIR)
+     #@$(foreach s, $(call qstrip,$(BR2_ROOTFS_POST_IMAGE_SCRIPT)), \
+         $(call MESSAGE,"Executing post-image script $(s)"); \
+         $(EXTRA_ENV) $(s) $(BINARIES_DIR) $(call qstrip,$(BR2_ROOTFS_POST_SCRIPT_ARGS))$(sep))
 ```
 
 #### 6.4 altera提供的sdk
