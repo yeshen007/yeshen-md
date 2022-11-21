@@ -1,4 +1,4 @@
-## <center>cyclone镜像配置编译烧写</center>
+## <center>cyclone socfpga bsp</center>
 
 [TOC]
 
@@ -168,44 +168,20 @@ Tftp下载rbf：tftp 0x8000 printhead_v3.rbf
 用jtag烧写rbf：quartus_hps -c 1 -o p -a 0x1400000 soc_system.rbf
 ```
 
-### 五、正式板uboot启动环境变量
 
-#### 5.1 不配置fpga的bootcmd
 
-```c
-/* 倒计时结束后自动执行或者boot手动执行 */
-bootcmd=mw.b 0x100 0xff 0x700000;tftp 0x8000 zImage;tftp 0x100 socfpga_cyclone5_socdk.dtb;run qspiboot
+### 五、驱动调试与分析
 
-/* 启动内核 */
-qspiboot=setenv bootargs console=ttyS0,115200 root=${qspiroot} rw rootfstype=${qspirootfstype};bootz ${loadaddr} - ${fdtaddr}
-```
+#### 5.1 watchdog驱动
 
-#### 5.2 配置fpga的bootcmd
+#### 5.2 tty uart驱动
 
-```c
-/* 倒计时结束后自动执行或者boot手动执行 */
-bootcmd=run qspifpga; run bridge_enable_handoff; run qspiload; run qspiboot
+#### 5.3 网卡驱动
 
-/* 从qspi加载rbf到内存，然后再加载入fpga */
-qspifpga=sf probe ${qspiloadcs}; sf read ${fpgadata} ${qspifpgaaddr} ${fpgadatasize};fpga load ${qspiloadcs} ${fpgadata} ${fpgadatasize}                               
+#### 5.4 pcie驱动
 
-/* 配置fpga */
-bridge_enable_handoff=mw $fpgaintf ${fpgaintf_handoff}; go $fpga2sdram_apply; mw $fpga2sdram ${fpga2sdram_handoff}; mw $axibridge ${axibridge_handoff}; mw $l3remap ${l3remap_handoff}
+#### 5.5 mtd驱动
 
-/* 从qspi读取内核和设备树到内存 */
-qspiload=sf probe ${qspiloadcs};sf read ${loadaddr} ${qspibootimageaddr} ${bootimagesize};sf read ${fdtaddr} ${qspifdtaddr} ${fdtimagesize};
- 
-/* 启动内核 */                                 
-qspiboot=setenv bootargs console=ttyS0,115200 root=${qspiroot} rw rootfstype=${qspirootfstype};bootz ${loadaddr} - ${fdtaddr}       
-
-/* 待整理  */
-setenv qspifpga  sf probe ${qspiloadcs}; sf read ${fpgadata} ${qspifpgaaddr} ${fpgadatasize}; fpga load ${qspiloadcs} ${fpgadata} ${fpgadatasize};
-setenv resetfpga  run h2f_reset_handle
-
-setenv bootcmd run qspifpga; run bridge_enable_handoff; run h2f_reset_handle; run qspiload; run qspiboot
-
-fatload mmc 01 $fpgadata soc_system.rbf;fpga load 0 $fpgadata $filesize;run bridge_enable_handoff; run h2f_reset_handle;run mmcload;run mmcboot;
-```
 
 
 
@@ -512,6 +488,12 @@ Target packages
 
 ```
 
+##### 6.6.4 linux、preempt rt和xenomai的性能测试对比
+
+```c
+
+```
+
 #### 6.7 toolchain
 
 ```c
@@ -519,5 +501,62 @@ http://releases.linaro.org/components/toolchain/binaries/
 https://www.linaro.org/downloads/			//较新
 	 Arm Developer website
 	 GNU Toolchain Integration Builds	//这个更通用感觉
+```
+
+#### 6.8 公司uboot
+
+##### 6.8.1 遗留环境变量
+
+###### 不配置fpga的bootcmd
+
+```c
+/* 倒计时结束后自动执行或者boot手动执行 */
+bootcmd=mw.b 0x100 0xff 0x700000;tftp 0x8000 zImage;tftp 0x100 socfpga_cyclone5_socdk.dtb;run qspiboot
+
+/* 启动内核 */
+qspiboot=setenv bootargs console=ttyS0,115200 root=${qspiroot} rw rootfstype=${qspirootfstype};bootz ${loadaddr} - ${fdtaddr}
+```
+
+###### 配置fpga的bootcmd
+
+```c
+/* 倒计时结束后自动执行或者boot手动执行 */
+bootcmd=run qspifpga; run bridge_enable_handoff; run qspiload; run qspiboot
+
+/* 从qspi加载rbf到内存，然后再加载入fpga */
+qspifpga=sf probe ${qspiloadcs}; sf read ${fpgadata} ${qspifpgaaddr} ${fpgadatasize};fpga load ${qspiloadcs} ${fpgadata} ${fpgadatasize}                               
+
+/* 配置fpga */
+bridge_enable_handoff=mw $fpgaintf ${fpgaintf_handoff}; go $fpga2sdram_apply; mw $fpga2sdram ${fpga2sdram_handoff}; mw $axibridge ${axibridge_handoff}; mw $l3remap ${l3remap_handoff}
+
+/* 从qspi读取内核和设备树到内存 */
+qspiload=sf probe ${qspiloadcs};sf read ${loadaddr} ${qspibootimageaddr} ${bootimagesize};sf read ${fdtaddr} ${qspifdtaddr} ${fdtimagesize};
+ 
+/* 启动内核 */                                 
+qspiboot=setenv bootargs console=ttyS0,115200 root=${qspiroot} rw rootfstype=${qspirootfstype};bootz ${loadaddr} - ${fdtaddr}       
+
+/* 待整理  */
+setenv qspifpga  sf probe ${qspiloadcs}; sf read ${fpgadata} ${qspifpgaaddr} ${fpgadatasize}; fpga load ${qspiloadcs} ${fpgadata} ${fpgadatasize};
+setenv resetfpga  run h2f_reset_handle
+
+setenv bootcmd run qspifpga; run bridge_enable_handoff; run h2f_reset_handle; run qspiload; run qspiboot
+
+fatload mmc 01 $fpgadata soc_system.rbf;fpga load 0 $fpgadata $filesize;run bridge_enable_handoff; run h2f_reset_handle;run mmcload;run mmcboot;
+```
+
+##### 6.8.2 修改文件
+
+```c
+main.c
+socfpga_common.h
+socfpga_common.c   	//setenv_ethaddr_eeprom    
+hanglory_config.h
+watchdog.h
+designware_wdt.c
+time.c
+start.S
+cmd_hangloryboot.c	//legacy
+hanglory_spl_spi.c	//legacy
+spl.c
 ```
 
