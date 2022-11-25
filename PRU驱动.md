@@ -1,4 +1,4 @@
-# <center>PRU中断</center>
+# <center>PRU驱动</center>
 
 **芯片手册pru中断相关架构图**
 
@@ -646,3 +646,4 @@ int KpaNicTaskReceive(void* hArg)
 ![](pictures/Snipaste_2020-11-04_09-09-01.png)
 
 ​		结果显示正确。
+

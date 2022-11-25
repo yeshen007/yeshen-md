@@ -416,7 +416,7 @@ input_data_end:
 
 (5) uImage是利用mkimage工具在zImage镜像头部加了一个64字节的头部得到的，这个头部包含内核相关信息比如入口地址，uboot通常使用uImage镜像启动内核。
 
-![](E:\叶神文档\Markdown及其pdf\draw\linuxflow1.svg)
+![](draw\linuxflow1.svg)
 
 ​		上图展示了从vmlinux得到其他镜像的流程，下面重点分析u-boot启动uImage的过程。uboot通过bootm uImage_addr - fdt_addr命令启动，uImage_addr是uboot将uImage加载到内存的地址，在我们的socfpga工程中是0x7fc0，这个地址就是64字节头部的起始地址，0x7fc0 + 0x40（64）= 0x8000，刚好是编译uImage传入的参数，即入口地址（zImage第一条代码地址）。uboot从0x7fc0提取这64字节头部信息，验证ok后，设置好传给内核的参数 (机器id和设备树地址) 后跳到zImage入口地址。
 ​		zImage入口在head.o中，需要注意的是Image中也有head.o，Image才是真正的内核主体。我们将zImage头部的head.o和misc.o组合称为启动加载程序(bootstrap loader)，它是uboot和内核之间的过渡，主要负责提供合适的上下文给内核运行和执行必要的解压缩和重新部署内核二进制镜像。其中：
@@ -487,7 +487,7 @@ ENTRY(stext)
 	beq	__error_p			@ yes, error 'p'
 
 	...
-
+	/* r8 = ddr在物理地址空间的偏移，这里为0 */
 	ldr	r8, =PHYS_OFFSET		@ always constant in this case
 
 
