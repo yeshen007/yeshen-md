@@ -564,8 +564,6 @@ irqreturn_t handle_irq_event_percpu(struct irq_desc *desc, struct irqaction *act
 
 
 
-
-
 ### 二、系统启动时的中断初始化
 
 #### 1、定义机器描述符
@@ -1546,7 +1544,5 @@ static void irq_setup_forced_threading(struct irqaction *new)
 ```
 
 
-
-### 五、各环节整合
 
 ​		
