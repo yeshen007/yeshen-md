@@ -1,7 +1,5 @@
 <h1 align="center" style="color:red">amp linux内存</h1>
 
-
-
 [TOC]
 ### 一、参考引用
 
@@ -338,7 +336,7 @@ void __init paging_init(struct machine_desc *mdesc)
 	prepare_page_table();		/* 清页表 */
 	map_lowmem();			    /* 映射lowmem，即线性映射区 */
 	dma_contiguous_remap();		/* 映射dma区 */
-	devicemaps_init(mdesc);		/* 映射设备区域，在amp中这里还映射amp相关区域 */
+	devicemaps_init(mdesc);		/* 映射设备区域包括异常向量，在amp中这里还映射amp相关区域 */
 	kmap_init();			   /* 分配pkmap区域的页表 */
 
 	top_pmd = pmd_off_k(0xffff0000);	/* 获取0xffff0000对应的pmd页表项地址 */

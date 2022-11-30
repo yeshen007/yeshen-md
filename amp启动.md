@@ -571,7 +571,7 @@
 		init_boot_params();		//boot_params_ptr = 0,片上ram的开始地址
 	}
 
-2.**amp\_share\_param\_init()到spl\_mmc\_load\_image()**的初始化sd/mmc和加载启动bm阶段详细分析见**bm\_load\_boot.pdf**
+2.**amp\_share\_param\_init()到spl\_mmc\_load\_image()**的初始化sd/mmc和加载启动bm阶段详细分析见**bm\_load\_boot.md**
 
 - **cpu0初始化sd/mmc控制器和设备**
 - **cpu0将bm镜像加载到sdram的0x1E000000地址处**
@@ -651,131 +651,9 @@
 **start-->reset-->jump\_to\_virt-->clbss\_l-->main**
 
 ### BM流程各阶段详细分析
-**start-->reset**(start.s)
+**看代码**
 
-	start:	
-	        b	reset
-	.....................................
-	reset:
-	
-	@@ 设置为svc管理模式，禁止IRQ和FIQ中断
-	mrs	r0, cpsr			
-	bic	r0, r0, #0x1f
-	orr	r0, r0, #0xd3
-	msr	cpsr_cxsf,r0	
-
-
-
-	@@ 设置cache 
-	mov     r0, #0					@ r0 = 0x00000000
- 	mcr     p15, 0, r0, c7, c5, 0   @ 使失效I-cache
-    mcr     p15, 2, r0, c0, c0, 0	@ 将0x00000000写入CSSELR(Cache Size Selection Register)
-    								@ 选择数据或者统一的L1 cache	
-    								
-    mrc     p15, 1, r0, c0, c0, 0	@ 将CCSIDR(Cache Size ID Registers)读到r0
-    ldr     r1, =0x7fff				@ r1 = 0x7fff
-    and     r2, r1, r0, lsr #13		@ r2 = r1 & (r0 >> 13) 
-    								@ 将CCSIDR第13位和以后的位的往右移13，再屏蔽后面四个位，只保留NumSets
-    ldr     r1, =0x3ff				@ r1 = 0x3fff
-    and     r3, r1, r0, lsr #3      @ r3 = r1 & (r0 >> 3)   (Associativity of cache(NumWays) - 1)
-    								@ 将CCSIDR第3位和以后的位的往右移13，再屏蔽后面19个位，只保留Associativity
-    add     r2, r2, #1              @ NumSets
-       
-    and     r0, r0, #0x7	@ r0 = r0 & 7,只保留CCSIDR前三位，(Log2(Number of words in cache line)) -2
-    add     r0, r0, #4      @ SetShift
-    
-    clz     r1, r3          @ WayShift   
-    add     r4, r3, #1      @ NumWays
-      
-    sub     r2, r2, #1      @ NumSets--
-    mov     r3, r4          @ Temp = NumWays
-     
-    subs    r3, r3, #1      @ Temp--
-    mov     r5, r3, lsl r1
-    mov     r6, r2, lsl r0
-    orr     r5, r5, r6      @ Reg = (Temp<<WayShift)|(NumSets<<SetShift)
-    mcr     p15, 0, r5, c7, c6, 2
-    bgt     2b
-    cmp     r2, #0
-    bgt     1b
-    dsb
-    isb
-
-
-	@@ 将异常向量表映射到0x00000000 
-	mrc     p15, 0, r0, c1, c0, 0   @ SCTLR读进r0
-	bic     r0, #(0x1<<13)    		@ V = 0
-	mcr     p15, 0, r0, c1, c0, 0   @ Write CP15 SCTRL Register
-
-
-    @@ 将Monitor mode和Hyp mode之外的异常向量地址重新映射到start处 
-    ldr     r0, =start  
-    mcr     p15, 0, r0, c12, c0, 0  @ Set VBAR
-    
-    @@ 浮点相关设置
-    mrc     p15, 0, r0, c1, c0, 2	@ CPACR读进r0	
-    orr     r0, r0, #(0x3  <<20)	@ 打开r0的第20和21位(所有pl可以访问cp10)
-    orr     r0, r0, #(0x3  <<22)	@ 打开r0的第22和23位(所有pl可以访问cp11)	
-    mcr     p15, 0, r0, c1, c0, 2	@ 写入CPACR
-    isb								@ 指令同步
-    mov     r0, #(0x1 << 30)  		
-    @vmsr	fpexc, r0 <- not correctly supported in binutils 2.22
-    mcr     p10, 7, r0, cr8, cr0, 0 @ alternate mnemonic for vmsr fpexec, r0
-     
-    @@ 设置栈
-    ldr sp, =usr_stack_end
-
-
-	@@ 建立设置页表
-	bl  build_PGTL
-	
-	@@ 设置页表的基地址
-	orr    r0, r0, #TTB_FLAGS_SMP		@ 打开TTBR0的第1，3，5和6位
-	mcr    p15, 0, r0, c2, c0, 0		
-	
-	isb
-	dsb
-	
-	@@ 设置内存访问不在检查页表的权限位 
-	ldr    r0, =0xFFFFFFFF             @ Set full access for all domains
-	mcr    p15, 0, r0, c3, c0, 0		
-	
-	@@ 使能smp,不在armv7中定义，在a9中定义
-	mov r0, #0x41
-	mcr	p15, 0, r0, c1, c0, 1
-	isb
-	dsb
-	
-	mov	r0, #0
-	mcr	p15, 0, r0, c7, c5, 0		@ 失效icache
-	dsb
-	mcr	p15, 0, r0, c8, c7, 0       @ 失效TLBs
-
-
-	dsb
-	isb
-
-**jump\_to\_virt**(start.S)
-
-	ldr sp, =usr_stack_end
-	@@ set the stack pinters for svc and irq mode. We don@t do anything
-	@@ that needs a stack in the other modes so do not bother 
-	@@ setting them up
-	msr     CPSR_c, #Mode_IRQ | I_Bit | F_Bit		@ 切换为IRQ模式并开irq中断和fiq中断
-	ldr	sp,=irq_stack_end							@ 设置IRQ模式的栈指针
-	
-	msr     CPSR_c, #Mode_SVC | I_Bit | F_Bit		@ 切换回SVC模式并开irq中断和fiq中断
-	
-	@@ 清bss 
-	ldr	r0,=bss_start		@ find start of bss segment
-	ldr	r1,=bss_end			@ stop here
-	mov	r2, #0x00000000		@ clear value
-
-
-**clbss\_l**(start.S)
-	
-
-
+ 								
 
 ## U-BOOT流程详细分析：
 ### U-BOOT入口
@@ -807,355 +685,363 @@
 
 **\_start --> reset --> save\_boot\_params(什么都没做) --> 设置管理模式，禁止IRQ和FIQ中断**(arch\arm\cpu\armv7\start.S)
 
-	.globl _start
-	_start: b	reset
-	
-	......................................................
-	
-	reset:
-		bl	save_boot_params
-		/* 设置为svc管理模式，禁止IRQ和FIQ中断 */
-		mrs	r0, cpsr		@ 将cpsr寄存器读到r0中
-		bic	r0, r0, #0x1f	@ 将读到r0中的cpsr副本前5位清零
-		orr	r0, r0, #0xd3	@ 打开r0中的cpsr副本第0，1，4，6，7位
-		msr	cpsr,r0			@ 将处理好后的值写入cpsr寄存器中
+```c
+.globl _start
+_start: b	reset
 
+......................................................
+
+reset:
+	bl	save_boot_params
+	/* 设置为svc管理模式，禁止IRQ和FIQ中断 */
+	mrs	r0, cpsr		@ 将cpsr寄存器读到r0中
+	bic	r0, r0, #0x1f	@ 将读到r0中的cpsr副本前5位清零
+	orr	r0, r0, #0xd3	@ 打开r0中的cpsr副本第0，1，4，6，7位
+	msr	cpsr,r0			@ 将处理好后的值写入cpsr寄存器中
+```
 
 **board\_init\_f(0)**(arch\arm\lib\board.c)
 
+```c
+void board_init_f(ulong bootflag)
+{
+	bd_t *bd;
+	init_fnc_t **init_fnc_ptr;
+	gd_t *id;
+	ulong addr, addr_sp;
+	bootstage_mark_name(BOOTSTAGE_ID_START_UBOOT_F, "board_init_f");
 
-	void board_init_f(ulong bootflag)
-	{
-		bd_t *bd;
-		init_fnc_t **init_fnc_ptr;
-		gd_t *id;
-		ulong addr, addr_sp;
+	/* Pointer is writable since we allocated a register for it */
+	gd = (gd_t *) ((CONFIG_SYS_INIT_SP_ADDR) & ~0x07);	//gd指向的区域起始地址，0xffff0000到该地址前用作临时栈
+	/* compiler optimization barrier needed for GCC >= 3.4 */
+	__asm__ __volatile__("": : :"memory");
 
+	memset((void *)gd, 0, sizeof(gd_t));		//初始化gd区域
 
+	gd->mon_len = _bss_end_ofs;		//__bss_end__ - _start
 
-		bootstage_mark_name(BOOTSTAGE_ID_START_UBOOT_F, "board_init_f");
-	
-		/* Pointer is writable since we allocated a register for it */
-		gd = (gd_t *) ((CONFIG_SYS_INIT_SP_ADDR) & ~0x07);	//gd指向的区域起始地址，0xffff0000到该地址前用作临时栈
-		/* compiler optimization barrier needed for GCC >= 3.4 */
-		__asm__ __volatile__("": : :"memory");
-	
-		memset((void *)gd, 0, sizeof(gd_t));		//初始化gd区域
-	
-		gd->mon_len = _bss_end_ofs;		//__bss_end__ - _start
-	
-		/* Allow the early environment to override the fdt address */
-		gd->fdt_blob = (void *)getenv_ulong("fdtcontroladdr", 16,
-							(uintptr_t)gd->fdt_blob);		//从环境变量中得到设备树地址	
-	
-		for (init_fnc_ptr = init_sequence; *init_fnc_ptr; ++init_fnc_ptr) {		//大部分初始化工作在这里
-			if ((*init_fnc_ptr)() != 0) {
-				hang ();
-			}
+	/* Allow the early environment to override the fdt address */
+	gd->fdt_blob = (void *)getenv_ulong("fdtcontroladdr", 16,
+						(uintptr_t)gd->fdt_blob);		//从环境变量中得到设备树地址	
+
+	for (init_fnc_ptr = init_sequence; *init_fnc_ptr; ++init_fnc_ptr) {		//大部分初始化工作在这里
+		if ((*init_fnc_ptr)() != 0) {
+			hang ();
 		}
-		
-		/*
-		init_fnc_t *init_sequence[] = {
-			arch_cpu_init,		//什么都没做，返回0
-			board_early_init_f,	//关闭l4wd0看门狗
-			timer_init,			//加载新计数，使能osc1timer1
-			env_init,			//gd->env_addr = (ulong)&default_environment[0]; gd->env_valid = 1;(common\env_mmc.c)
-			init_baudrate,		//gd->baudrate = getenv_ulong("baudrate", 10, CONFIG_BAUDRATE) = 57600
-			serial_init,		//根据gd的波特率设置串口0的控制器(drivers\serial\serial.c)
-			console_init_f,		//gd->have_console = 1;可以用printf,puts等打印函数了
-			display_banner,		//打印点东西
-			print_cpuinfo,		//打印CPU型号信息
-			checkboard,			//打印板型号信息
-			dram_init,			//gd->ram_size = get_ram_size(0x0, 0x40000000); 1G
-			NULL,
-		};	
-		*/
-	
-		debug("monitor len: %08lX\n", gd->mon_len);
-		/*
-		 * Ram is setup, size stored in gd !!
-		 */
-		debug("ramsize: %08lX\n", gd->ram_size);
-	
-		addr = CONFIG_SYS_SDRAM_BASE + gd->ram_size;		//0x0 + gd->ram_size
-	
-		/* reserve TLB table */
-		addr -= (4096 * 4);
-	
-		/* round down to next 64 kB limit */
-		addr &= ~(0x10000 - 1);
-	
-		gd->tlb_addr = addr;		//保留给tlb用
-		debug("TLB table at: %08lx\n", addr);
-	
-		/* round down to next 4 kB limit */
-		addr &= ~(4096 - 1);
-		debug("Top of RAM usable for U-Boot at: %08lx\n", addr);
-	
-		/*
-		 * reserve memory for U-Boot code, data & bss
-		 * round down to next 4 kB limit
-		 */
-		addr -= gd->mon_len;		//保留给u-boot的代码，数据，bss段
-		addr &= ~(4096 - 1);
-	
-		debug("Reserving %ldk for U-Boot at: %08lx\n", gd->mon_len >> 10, addr);
-	
-		/*
-		 * reserve memory for malloc() arena
-		 */
-		addr_sp = addr - TOTAL_MALLOC_LEN;
-		debug("Reserving %dk for malloc() at: %08lx\n",
-				TOTAL_MALLOC_LEN >> 10, addr_sp);
-		/*
-		 * (permanently) allocate a Board Info struct
-		 * and a permanent copy of the "global" data
-		 */
-		addr_sp -= sizeof (bd_t);
-		bd = (bd_t *) addr_sp;		//保留给bd结构
-		gd->bd = bd;				
-		debug("Reserving %zu Bytes for Board Info at: %08lx\n",
-				sizeof (bd_t), addr_sp);
-
-
-
-		addr_sp -= sizeof (gd_t);		
-		id = (gd_t *) addr_sp;		//保留给gd结构
-		debug("Reserving %zu Bytes for Global Data at: %08lx\n",
-				sizeof (gd_t), addr_sp);
-	
-		/* setup stackpointer for exeptions */
-		gd->irq_sp = addr_sp;		//gd->irq_sp = id
-	
-		/* leave 3 words for abort-stack    */
-		addr_sp -= 12;
-	
-		/* 8-byte alignment for ABI compliance */
-		addr_sp &= ~0x07;
-
-
-
-		debug("New Stack Pointer is: %08lx\n", addr_sp);
-
-
-
-		gd->bd->bi_baudrate = gd->baudrate;		//bd波特率与gd同步
-		/* Ram ist board specific, so move it to board code ... */
-		dram_init_banksize();    //gd->bd->bi_dram[0].start = 0x0; gd->bd->bi_dram[0].size = gd->ram_size
-		display_dram_config();	/* and display it */
-	
-		gd->relocaddr = addr;			//重地位地址
-		gd->start_addr_sp = addr_sp;		//新的栈指针
-		gd->reloc_off = addr - _TEXT_BASE;	//重定位地址到_TEXT_BASE的重定位偏移
-		debug("relocation Offset is: %08lx\n", gd->reloc_off);
-		memcpy(id, (void *)gd, sizeof(gd_t));	//将保存到r8寄存器的gd指针指向的数据写入sdram对应地址中传送给linux
-	
-		relocate_code(addr_sp, id, addr);		//重地位u-boot代码
-	
-		/* NOTREACHED - relocate_code() does not return */
 	}
+	
+	/*
+	init_fnc_t *init_sequence[] = {
+		arch_cpu_init,		//什么都没做，返回0
+		board_early_init_f,	//关闭l4wd0看门狗
+		timer_init,			//加载新计数，使能osc1timer1
+		env_init,			//gd->env_addr = (ulong)&default_environment[0]; gd->env_valid = 1;(common\env_mmc.c)
+		init_baudrate,		//gd->baudrate = getenv_ulong("baudrate", 10, CONFIG_BAUDRATE) = 57600
+		serial_init,		//根据gd的波特率设置串口0的控制器(drivers\serial\serial.c)
+		console_init_f,		//gd->have_console = 1;可以用printf,puts等打印函数了
+		display_banner,		//打印点东西
+		print_cpuinfo,		//打印CPU型号信息
+		checkboard,			//打印板型号信息
+		dram_init,			//gd->ram_size = get_ram_size(0x0, 0x40000000); 1G
+		NULL,
+	};	
+	*/
+
+	debug("monitor len: %08lX\n", gd->mon_len);
+	/*
+	 * Ram is setup, size stored in gd !!
+	 */
+	debug("ramsize: %08lX\n", gd->ram_size);
+
+	addr = CONFIG_SYS_SDRAM_BASE + gd->ram_size;		//0x0 + gd->ram_size
+
+	/* reserve TLB table */
+	addr -= (4096 * 4);
+
+	/* round down to next 64 kB limit */
+	addr &= ~(0x10000 - 1);
+
+	gd->tlb_addr = addr;		//保留给tlb用
+	debug("TLB table at: %08lx\n", addr);
+
+	/* round down to next 4 kB limit */
+	addr &= ~(4096 - 1);
+	debug("Top of RAM usable for U-Boot at: %08lx\n", addr);
+
+	/*
+	 * reserve memory for U-Boot code, data & bss
+	 * round down to next 4 kB limit
+	 */
+	addr -= gd->mon_len;		//保留给u-boot的代码，数据，bss段
+	addr &= ~(4096 - 1);
+
+	debug("Reserving %ldk for U-Boot at: %08lx\n", gd->mon_len >> 10, addr);
+
+	/*
+	 * reserve memory for malloc() arena
+	 */
+	addr_sp = addr - TOTAL_MALLOC_LEN;
+	debug("Reserving %dk for malloc() at: %08lx\n",
+			TOTAL_MALLOC_LEN >> 10, addr_sp);
+	/*
+	 * (permanently) allocate a Board Info struct
+	 * and a permanent copy of the "global" data
+	 */
+	addr_sp -= sizeof (bd_t);
+	bd = (bd_t *) addr_sp;		//保留给bd结构
+	gd->bd = bd;				
+	debug("Reserving %zu Bytes for Board Info at: %08lx\n",
+			sizeof (bd_t), addr_sp);
+	addr_sp -= sizeof (gd_t);		
+	id = (gd_t *) addr_sp;		//保留给gd结构
+	debug("Reserving %zu Bytes for Global Data at: %08lx\n",
+			sizeof (gd_t), addr_sp);
+
+	/* setup stackpointer for exeptions */
+	gd->irq_sp = addr_sp;		//gd->irq_sp = id
+
+	/* leave 3 words for abort-stack    */
+	addr_sp -= 12;
+
+	/* 8-byte alignment for ABI compliance */
+	addr_sp &= ~0x07;	
+	debug("New Stack Pointer is: %08lx\n", addr_sp); 
+	gd->bd->bi_baudrate = gd->baudrate;		//bd波特率与gd同步
+	/* Ram ist board specific, so move it to board code ... */
+	dram_init_banksize();    //gd->bd->bi_dram[0].start = 0x0; gd->bd->bi_dram[0].size = gd->ram_size
+	display_dram_config();	/* and display it */
+
+	gd->relocaddr = addr;			//重地位地址
+	gd->start_addr_sp = addr_sp;		//新的栈指针
+	gd->reloc_off = addr - _TEXT_BASE;	//重定位地址到_TEXT_BASE的重定位偏移
+	debug("relocation Offset is: %08lx\n", gd->reloc_off);
+	memcpy(id, (void *)gd, sizeof(gd_t));	//将保存到r8寄存器的gd指针指向的数据写入sdram对应地址中传送给linux
+
+	relocate_code(addr_sp, id, addr);		//重地位u-boot代码
+
+	/* NOTREACHED - relocate_code() does not return */
+}    
+```
 
 **relocate\_code(addr\_sp, gd, addr)**(arch\arm\cpu\armv7\start.S)
 
 **不返回**
 
-	ENTRY(relocate_code)
-		mov	r4, r0	/* save addr_sp */					@ r4=addr_sp
-		mov	r5, r1	/* save addr of gd */				@ r5=gd	 (gd地址)
-		mov	r6, r2	/* save addr of destination */		@ r6=addr(重定位地址)
-	
-		/* Set up the stack */
-	stack_setup:
-		mov	sp, r4
-	
-		adr	r0, _start														@将_start标号处地址给r0(0x01000040)
-		cmp	r0, r6
-		moveq	r9, #0		/* no relocation. relocation offset(r9) = 0 */	@如果r0==r6则r9=0
-		beq	clear_bss		/* skip relocation */							@如果r0==r6则不需要重定位，直接跳到后面
-		mov	r1, r6			/* r1 <- scratch for copy_loop */				@如果r0!=r6则将重定位目标地址给r1
-		ldr	r3, _image_copy_end_ofs											@r3=将.rel.dyn之前的镜像长度
-		add	r2, r0, r3		/* r2 <- source end address	    */				@r2=r3+r0
-	
-	copy_loop:
-		ldmia	r0!, {r9-r10}		/* copy from source address [r0]    */	@r9=[r0],r10=[r0+4],r0=r0+4+4
-		stmia	r1!, {r9-r10}		/* copy to   target address [r1]    */	@[r1]=r9,[r1+4]=r10,r1=r1+4+4
-		cmp	r0, r2			/* until source end address [r2]    */			@r0-r2
-		blo	copy_loop														@如果r0-r2<0继续copy_loop
-																			@@将_image_copy_start和_image_copy_end之间的数据复制到gd->relocaddr地址处
-	
-		/*
-		 * fix .rel.dyn relocations
-		 */
-		ldr	r0, _TEXT_BASE		/* r0 <- Text base */						@r0=0x01000040
-		sub	r9, r6, r0		/* r9 <- relocation offset */					@r9=r6-r0=gd->reloc_off
-		ldr	r10, _dynsym_start_ofs	/* r10 <- sym table ofs */				@r10 = __dynsym_start - _start
-		add	r10, r10, r0		/* r10 <- sym table in FLASH */				@r10 = .dynsym段开头的加载地址
-		ldr	r2, _rel_dyn_start_ofs	/* r2 <- rel dyn start ofs */			@r2 = __rel_dyn_start - _start
-		add	r2, r2, r0		/* r2 <- rel dyn start in FLASH */				@r2 = .rel.dyn段开头的加载地址
-		ldr	r3, _rel_dyn_end_ofs	/* r3 <- rel dyn end ofs */				@r3 = __rel_dyn_end - _start
-		add	r3, r3, r0		/* r3 <- rel dyn end in FLASH */					@r3 = .rel.dyn段末尾的加载地址
-	fixloop:
-		ldr	r0, [r2]		/* r0 <- location to fix up, IN FLASH! */		
-		add	r0, r0, r9		/* r0 <- location to fix up in RAM */
-		ldr	r1, [r2, #4]
-		and	r7, r1, #0xff
-		cmp	r7, #23			/* relative fixup? */
-		beq	fixrel
-		cmp	r7, #2			/* absolute fixup? */
-		beq	fixabs
-		/* ignore unknown type of fixup */
-		b	fixnext												
-	fixabs:
-		/* absolute fix: set location to (offset) symbol value */
-		mov	r1, r1, LSR #4		/* r1 <- symbol index in .dynsym */
-		add	r1, r10, r1		/* r1 <- address of symbol in table */
-		ldr	r1, [r1, #4]		/* r1 <- symbol value */
-		add	r1, r1, r9		/* r1 <- relocated sym addr */
-		b	fixnext
-	fixrel:
-		/* relative fix: increase location by offset */
-		ldr	r1, [r0]
-		add	r1, r1, r9
-	fixnext:
-		str	r1, [r0]
-		add	r2, r2, #8		/* each rel.dyn entry is 8 bytes */
-		cmp	r2, r3
-		blo	fixloop
-		b	clear_bss
-	_rel_dyn_start_ofs:
-		.word __rel_dyn_start - _start
-	_rel_dyn_end_ofs:
-		.word __rel_dyn_end - _start
-	_dynsym_start_ofs:
-		.word __dynsym_start - _start
-	
-	clear_bss:
-		ldr	r0, _bss_start_ofs						@r0 = __bss_start - _start
-		ldr	r1, _bss_end_ofs						@r1 = __bss_end - _start
-		mov	r4, r6			/* reloc addr */		@r4 = addr	
-		add	r0, r0, r4								@r0 = __bss_start - _start + addr(新的__bss_start)
-		add	r1, r1, r4								@r1 = __bss_end - _start + addr(新的__bss_end)
-		mov	r2, #0x00000000		/* clear */			@r2 = #0x00000000
-	
-	clbss_l:
-		cmp	r0, r1			/* clear loop... */					@r0-r1
-		bhs	clbss_e			/* if reached end of bss, exit */	@r0大于或等于r1则跳转到clbss_e
-		str	r2, [r0]											@清零r0指向的一个4字节的内存
-		add	r0, r0, #4											@r0+=4
-		b	clbss_l												@循环继续清0
-	clbss_e:
-	
-	/*
-	 * We are done. Do not return, instead branch to second part of board
-	 * initialization, now running from RAM.
-	 */
-	jump_2_ram:
-	/*
-	 * If I-cache is enabled invalidate it
-	 */
-	#ifndef CONFIG_SYS_ICACHE_OFF
-		mcr	p15, 0, r0, c7, c5, 0	@ invalidate icache		@ 开icache
-		mcr     p15, 0, r0, c7, c10, 4	@ DSB				@ DSB，数据同步屏障，内存操作完成才进行后面指令的操作
-		mcr     p15, 0, r0, c7, c5, 4	@ ISB				@ ISB，指令同步屏障，清空流水线
-	#endif
-	/*
-	 * Move vector table
-	 */
-	#if !defined(CONFIG_TEGRA20)
-		/* Set vector address in CP15 VBAR register */
-		ldr     r0, =_start							@0x01000040
-		add     r0, r0, r9							@重定位后的_start地址
-		mcr     p15, 0, r0, c12, c0, 0  @Set VBAR	@将异常向量地址设定为重定位后的_start地址处
-	#endif /* !Tegra20 */
-	
-		ldr	r0, _board_init_r_ofs			@ r0 = board_init_r - _start		
-		adr	r1, _start						@ r1 = _start	
-		add	lr, r0, r1						@ lr = board_init_r
-		add	lr, lr, r9						@ 重定位后的board_init_r地址lr = board_init_r + gd->reloc_off
-		/* setup parameters for board_init_r */
-		mov	r0, r5		/* gd_t */			@ 设置board_init_r第一个参数id
-		mov	r1, r6		/* dest_addr */		@ 设置board_init_r第二个参数addr
-		/* jump to it ... */
-		mov	pc, lr							@ 跳转到重定位后的board_init_r地址去运行，拜拜，不回来了
-	
-	_board_init_r_ofs:
-		.word board_init_r - _start
-	ENDPROC(relocate_code)
+```c
+ENTRY(relocate_code)
+	mov	r4, r0	/* save addr_sp */					@ r4=addr_sp
+	mov	r5, r1	/* save addr of gd */				@ r5=gd	 (gd地址)
+	mov	r6, r2	/* save addr of destination */		@ r6=addr(重定位地址)
 
+	/* Set up the stack */
+stack_setup:
+	mov	sp, r4
+
+	adr	r0, _start														@将_start标号处地址给r0(0x01000040)
+	cmp	r0, r6
+	moveq	r9, #0		/* no relocation. relocation offset(r9) = 0 */	@如果r0==r6则r9=0
+	beq	clear_bss		/* skip relocation */							@如果r0==r6则不需要重定位，直接跳到后面
+	mov	r1, r6			/* r1 <- scratch for copy_loop */				@如果r0!=r6则将重定位目标地址给r1
+	ldr	r3, _image_copy_end_ofs											@r3=将.rel.dyn之前的镜像长度
+	add	r2, r0, r3		/* r2 <- source end address	    */				@r2=r3+r0
+
+copy_loop:
+	ldmia	r0!, {r9-r10}		/* copy from source address [r0]    */	@r9=[r0],r10=[r0+4],r0=r0+4+4
+	stmia	r1!, {r9-r10}		/* copy to   target address [r1]    */	@[r1]=r9,[r1+4]=r10,r1=r1+4+4
+	cmp	r0, r2			/* until source end address [r2]    */			@r0-r2
+	blo	copy_loop														@如果r0-r2<0继续copy_loop
+																		@@将_image_copy_start和_image_copy_end之间的数据复制到gd->relocaddr地址处
+
+	/*
+	 * fix .rel.dyn relocations
+	 */
+	ldr	r0, _TEXT_BASE		/* r0 <- Text base */						@r0=0x01000040
+	sub	r9, r6, r0		/* r9 <- relocation offset */					@r9=r6-r0=gd->reloc_off
+	ldr	r10, _dynsym_start_ofs	/* r10 <- sym table ofs */				@r10 = __dynsym_start - _start
+	add	r10, r10, r0		/* r10 <- sym table in FLASH */				@r10 = .dynsym段开头的加载地址
+	ldr	r2, _rel_dyn_start_ofs	/* r2 <- rel dyn start ofs */			@r2 = __rel_dyn_start - _start
+	add	r2, r2, r0		/* r2 <- rel dyn start in FLASH */				@r2 = .rel.dyn段开头的加载地址
+	ldr	r3, _rel_dyn_end_ofs	/* r3 <- rel dyn end ofs */				@r3 = __rel_dyn_end - _start
+	add	r3, r3, r0		/* r3 <- rel dyn end in FLASH */					@r3 = .rel.dyn段末尾的加载地址
+fixloop:
+	ldr	r0, [r2]		/* r0 <- location to fix up, IN FLASH! */		
+	add	r0, r0, r9		/* r0 <- location to fix up in RAM */
+	ldr	r1, [r2, #4]
+	and	r7, r1, #0xff
+	cmp	r7, #23			/* relative fixup? */
+	beq	fixrel
+	cmp	r7, #2			/* absolute fixup? */
+	beq	fixabs
+	/* ignore unknown type of fixup */
+	b	fixnext												
+fixabs:
+	/* absolute fix: set location to (offset) symbol value */
+	mov	r1, r1, LSR #4		/* r1 <- symbol index in .dynsym */
+	add	r1, r10, r1		/* r1 <- address of symbol in table */
+	ldr	r1, [r1, #4]		/* r1 <- symbol value */
+	add	r1, r1, r9		/* r1 <- relocated sym addr */
+	b	fixnext
+fixrel:
+	/* relative fix: increase location by offset */
+	ldr	r1, [r0]
+	add	r1, r1, r9
+fixnext:
+	str	r1, [r0]
+	add	r2, r2, #8		/* each rel.dyn entry is 8 bytes */
+	cmp	r2, r3
+	blo	fixloop
+	b	clear_bss
+_rel_dyn_start_ofs:
+	.word __rel_dyn_start - _start
+_rel_dyn_end_ofs:
+	.word __rel_dyn_end - _start
+_dynsym_start_ofs:
+	.word __dynsym_start - _start
+
+clear_bss:
+	ldr	r0, _bss_start_ofs						@r0 = __bss_start - _start
+	ldr	r1, _bss_end_ofs						@r1 = __bss_end - _start
+	mov	r4, r6			/* reloc addr */		@r4 = addr	
+	add	r0, r0, r4								@r0 = __bss_start - _start + addr(新的__bss_start)
+	add	r1, r1, r4								@r1 = __bss_end - _start + addr(新的__bss_end)
+	mov	r2, #0x00000000		/* clear */			@r2 = #0x00000000
+
+clbss_l:
+	cmp	r0, r1			/* clear loop... */					@r0-r1
+	bhs	clbss_e			/* if reached end of bss, exit */	@r0大于或等于r1则跳转到clbss_e
+	str	r2, [r0]											@清零r0指向的一个4字节的内存
+	add	r0, r0, #4											@r0+=4
+	b	clbss_l												@循环继续清0
+clbss_e:
+
+/*
+ * We are done. Do not return, instead branch to second part of board
+ * initialization, now running from RAM.
+ */
+jump_2_ram:
+/*
+ * If I-cache is enabled invalidate it
+ */
+#ifndef CONFIG_SYS_ICACHE_OFF
+	mcr	p15, 0, r0, c7, c5, 0	@ invalidate icache		@ 开icache
+	mcr     p15, 0, r0, c7, c10, 4	@ DSB				@ DSB，数据同步屏障，内存操作完成才进行后面指令的操作
+	mcr     p15, 0, r0, c7, c5, 4	@ ISB				@ ISB，指令同步屏障，清空流水线
+#endif
+/*
+ * Move vector table
+ */
+#if !defined(CONFIG_TEGRA20)
+	/* Set vector address in CP15 VBAR register */
+	ldr     r0, =_start							@0x01000040
+	add     r0, r0, r9							@重定位后的_start地址
+	mcr     p15, 0, r0, c12, c0, 0  @Set VBAR	@将异常向量地址设定为重定位后的_start地址处
+#endif /* !Tegra20 */
+
+	ldr	r0, _board_init_r_ofs			@ r0 = board_init_r - _start		
+	adr	r1, _start						@ r1 = _start	
+	add	lr, r0, r1						@ lr = board_init_r
+	add	lr, lr, r9						@ 重定位后的board_init_r地址lr = board_init_r + gd->reloc_off
+	/* setup parameters for board_init_r */
+	mov	r0, r5		/* gd_t */			@ 设置board_init_r第一个参数id
+	mov	r1, r6		/* dest_addr */		@ 设置board_init_r第二个参数addr
+	/* jump to it ... */
+	mov	pc, lr							@ 跳转到重定位后的board_init_r地址去运行，拜拜，不回来了
+
+_board_init_r_ofs:
+	.word board_init_r - _start
+ENDPROC(relocate_code)
+```
 
 **board\_init\_r(id, addr)**(arch\arm\lib\board.c)
 
-	void board_init_r(gd_t *id, ulong dest_addr)
-	{
-		ulong malloc_start;
-	
-		gd = id;	
-	
-		gd->flags |= GD_FLG_RELOC;	/* tell others: relocation done */
-		bootstage_mark_name(BOOTSTAGE_ID_START_UBOOT_R, "board_init_r");
-	
-		monitor_flash_len = _end_ofs;		//__image_copy_end - _start
-	
-		/* Enable caches */
-		enable_caches();					//使能D-cache. I-cache已经在start.S使能了
-	
-		debug("monitor flash len: %08lX\n", monitor_flash_len);
-		board_init();	/* Setup chipselects */	//gd->bd->bi_boot_params = 0x00000100; tag或者设备树地址
-		/*
-		 * TODO: printing of the clock inforamtion of the board is now
-		 * implemented as part of bdinfo command. Currently only support for
-		 * davinci SOC's is added. Remove this check once all the board
-		 * implement this.
-		 */
-	
-		debug("Now running in RAM - U-Boot at: %08lx\n", dest_addr);
 
+```c
+void board_init_r(gd_t *id, ulong dest_addr)
+{
+	ulong malloc_start;
 
-		/* The Malloc area is immediately below the monitor copy in DRAM */
-		malloc_start = dest_addr - TOTAL_MALLOC_LEN;			//malloc堆的起始地址
-		mem_malloc_init (malloc_start, TOTAL_MALLOC_LEN);	//初始化malloc堆
-	
-	    puts("MMC:   ");
-	    mmc_initialize(gd->bd);								//初始化&mmc_devices链表，初始化一个mmc结构体，注册mmc设备（将mmc添加到&mmc_devices链表中）
-	
-		/* initialize environment */
-		env_relocate();		//通过sd卡初始化环境变量,如果没有或者其他问题则使用默认环境变量，存在env_htab中(env_mmc.c)
-		/* get the devices list going. */
-		stdio_init();		//初始化devs.list链表，注册一个stdio_dev设备到该链表中，设备名为“serial”(stdio.c)
-	
-		jumptable_init();	//分配内存给跳转表并赋值，模拟系统调用
-	
-		console_init_r();	//gd->flags |= GD_FLG_DEVINIT;设置stdio_devices[]三个设备stdio,stdout,stderr都为stdio_init()中注册的名为“serial”的设备
-	
-		/* miscellaneous platform dependent initialisations */
-		misc_init_r();
-	
-		 /* set up exceptions */
-		interrupt_init();			//没有使用
-		/* enable exceptions */
-		enable_interrupts();		//没有使用
-	
-		/* Initialize from environment */
-		load_addr = getenv_ulong("loadaddr", 16, load_addr);		//获取环境变量loadaddr
-	
-		board_late_init();
-	
-		puts("Net:   ");
-		eth_initialize(gd->bd);
-	
-		/* main_loop() can return to retry autoboot, if so just run it again. */
-		for (;;) {
-			main_loop();			//进入最后加载启动linux阶段
-		}
-	
-		/* NOTREACHED - no way out of command loop except booting */
+	gd = id;	
+
+	gd->flags |= GD_FLG_RELOC;	/* tell others: relocation done */
+	bootstage_mark_name(BOOTSTAGE_ID_START_UBOOT_R, "board_init_r");
+
+	monitor_flash_len = _end_ofs;		//__image_copy_end - _start
+
+	/* Enable caches */
+	enable_caches();					//使能D-cache. I-cache已经在start.S使能了
+
+	debug("monitor flash len: %08lX\n", monitor_flash_len);
+	board_init();	/* Setup chipselects */	//gd->bd->bi_boot_params = 0x00000100; tag或者设备树地址
+	/*
+	 * TODO: printing of the clock inforamtion of the board is now
+	 * implemented as part of bdinfo command. Currently only support for
+	 * davinci SOC's is added. Remove this check once all the board
+	 * implement this.
+	 */
+
+	debug("Now running in RAM - U-Boot at: %08lx\n", dest_addr);	
+	/* The Malloc area is immediately below the monitor copy in DRAM */
+	malloc_start = dest_addr - TOTAL_MALLOC_LEN;			//malloc堆的起始地址
+	mem_malloc_init (malloc_start, TOTAL_MALLOC_LEN);	//初始化malloc堆
+
+    puts("MMC:   ");
+    mmc_initialize(gd->bd);								//初始化&mmc_devices链表，初始化一个mmc结构体，注册mmc设备（将mmc添加到&mmc_devices链表中）
+
+	/* initialize environment */
+	env_relocate();		//通过sd卡初始化环境变量,如果没有或者其他问题则使用默认环境变量，存在env_htab中(env_mmc.c)
+	/* get the devices list going. */
+	stdio_init();		//初始化devs.list链表，注册一个stdio_dev设备到该链表中，设备名为“serial”(stdio.c)
+
+	jumptable_init();	//分配内存给跳转表并赋值，模拟系统调用
+
+	console_init_r();	//gd->flags |= GD_FLG_DEVINIT;设置stdio_devices[]三个设备stdio,stdout,stderr都为stdio_init()中注册的名为“serial”的设备
+
+	/* miscellaneous platform dependent initialisations */
+	misc_init_r();
+
+	 /* set up exceptions */
+	interrupt_init();			//没有使用
+	/* enable exceptions */
+	enable_interrupts();		//没有使用
+
+	/* Initialize from environment */
+	load_addr = getenv_ulong("loadaddr", 16, load_addr);		//获取环境变量loadaddr
+
+	board_late_init();
+
+	puts("Net:   ");
+	eth_initialize(gd->bd);
+
+	/* main_loop() can return to retry autoboot, if so just run it again. */
+	for (;;) {
+		main_loop();			//进入最后加载启动linux阶段
 	}
+
+	/* NOTREACHED - no way out of command loop except booting */
+}
+```
 
 **main_loop()(common\main.c)**
 
+```c
+
+```
 
 
 
+## linux启动双核测试
+
+```c
+/* 启动linux侧的测试步骤：
+ * 加载测试驱动或者将测试驱动编入内核,位置在drivers/char/amp.c
+ * 然后结合驱动代码amp.c和AMP Reference Design User Manual_20140429.pdf
+ * 进行测试与分析
+ */
+```
+
+
+
+## 遗漏
 
 ### SPL疑点
 

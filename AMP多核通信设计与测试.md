@@ -3,7 +3,6 @@
 ![](pictures\AMP.png)					 											
 
 <center>图1 多核通信方案流程</center>
-
 　　AMP多核通信方案如上图所示，分为硬核和软核，硬核部分有ARM的CPU0和CPU1两个核，软核部分为FPGA，系统上电时会先运行SOC厂家固化在引导ROM中的代码，该部分代码根据硬件设置选择对应的启动方式，然后从相应的存储介质中加载preloader到ddr中运行。接下来是每个模块主要功能：
 
 **1.preloader**
@@ -45,7 +44,6 @@
 ![](pictures\ampmem1.PNG)
 
 <center>图 2 物理内存分布</center>
-
 　　上图是amp方案的物理内存分布。具体分配如下：
 
 - 片上静态内存SRAM：0xFFFF0000~0xFFFFFFFF，大小64KB
@@ -55,29 +53,25 @@
 - 裸机代码存放空间：0x1E000000~0x1E0FFFFF，大小1MB
 - 共享区域：0x1E100000~0x1FFFFFFF，大小31MB
   - 共享参数区域：0x1E100000~0x1E1FFFFF，大小1MB
-  - 共享传输数据块：0x1E200000~0x1ECFFFFF，大小28MB
-  - DMA：0x1ED00000~0x1FFFFFFF，大小2MB
+  - 共享传输数据块：0x1E200000~0x1FDFFFFF，大小28MB
+  - DMA：0x1FE00000~0x1FFFFFFF，大小2MB
 
 **2.linux虚拟地址映射**
 
 ![](pictures\ampmem2.PNG)
 
 <center>图 3 linux虚拟地址映射</center>
-
 **3.裸机虚拟地址映射**
 
 ![](pictures\ampmem3.PNG)
 
 <center>图 4  裸机虚拟地址映射</center>
 
-
-
 ## 三.CPU0与CPU1双核通信方案与测试
 
 ![](pictures\doublecore_test.png) 
 
 <center>图5 一个ddr共享内存通信循环流程</center>
-
 **1.方案设计**
 
 　　方案如上图所示，CPU0和CPU1之间的一个ddr共享内存读写验证的通信循环的流程。该通信循环分为4步：
@@ -93,7 +87,6 @@
 　　以上方案的测试方法是利用示波器测量每个循环切换GPIO管脚的电平的频率来计算通信速率。计算公式如下：
 
 <center>freq(Hz) * 2 * 2(w) * 2(r&check) * size(KB)</center>
-
 公式中各项含义是：
 
 **freq(Hz)：**示波器频率，代表每秒的周期数
@@ -109,14 +102,12 @@
 ![](pictures\scope_1.png)
 
 <center>图6 ddr共享内存测试</center>
-
 　　图6是使用ddr作为共享内存测试的波形图，freq为1670，size为64，因此通信速率为1670Hz * 2 * 2w * 2r&check * 64KB = 875560960B/s = 7.00Gbps
 
 ![](pictures\scope_2.png)
 
 <center>图7 sram共享内存测试</center>
-
-　　上图是使用sram作为共享内存测试的波形图，freq为3210，size为32，因此通信速率为3210Hz * 2 * 2w * 2r&check * 32KB = 841482240B/s = 6.73Gbps
+　　上图是使用sram作为共享内存测试的波形图，freq为3210，size为32，因此通信速率为3210Hz * 2 * 2w * 2r&check * 32KB = 841482240B/s = 6.73Gbps.
 
 **3.小结**
 
