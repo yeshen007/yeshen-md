@@ -176,6 +176,235 @@ Tftp下载rbf：tftp 0x8000 printhead_v3.rbf
 
 #### 5.2 tty uart驱动
 
+#####  注册
+
+```c
+/* 设备树 */
+	ph0_uart@ff200800 {
+		compatible = "altr,uart-1.0";	//altera-uart.c
+		reg = <0xff200800 0x20>;
+		interrupt-parent = <&intc>;
+		interrupts = <0x0 0x4a IRQ_TYPE_LEVEL_HIGH>;	//fpga-irq34,发送和接收共用
+		interrupt-names = "altera_uart0";	
+		clock-frequency = <50000000>;
+	};	
+	ph1_uart@ff200820 {
+		compatible = "altr,uart-1.0";
+		...
+	};	
+
+/* 驱动altera-uart.c */
+static const struct of_device_id altera_uart_match[] = {
+	{ .compatible = "ALTR,uart-1.0", },
+	{ .compatible = "altr,uart-1.0", },	//匹配设备树
+	{},
+};
+
+static struct platform_driver altera_uart_platform_driver = {
+	.probe	= altera_uart_probe,		//注册uart_port
+	.remove	= altera_uart_remove,
+	.driver	= {
+		.name		= DRV_NAME,
+		.of_match_table	= of_match_ptr(altera_uart_match),		//匹配设备树
+	},
+};
+
+static int __init altera_uart_init(void)
+{
+	//注册tty_driver
+	rc = uart_register_driver(&altera_uart_driver);
+
+	//注册altera_uart_platform_driver然后触发altera_uart_probe
+	//在altera_uart_probe中注册uart_port
+	rc = platform_driver_register(&altera_uart_platform_driver);
+}
+```
+
+​		设备树中定义了两个串口节点，这两个节点会被创建成两个platform_device然后注册到平台总线。在驱动加载后会触发altera_uart_init，然后注册uart_driver和uart_port。因此注册过程主要分为注册uart_driver和注册uart_port两个。
+
+###### 注册uart_driver
+
+```c
+/*********************************************************************
+ * 从uart_register_driver(&altera_uart_driver)开始分析注册uart_driver过程
+ *********************************************************************/
+
+static struct uart_driver altera_uart_driver = {
+	.owner		= THIS_MODULE,
+	.driver_name	= DRV_NAME,
+	.dev_name	= "ttyAL",							//设备节点名字前缀
+	.major		= SERIAL_ALTERA_MAJOR,
+	.minor		= SERIAL_ALTERA_MINOR,
+	.nr		= CONFIG_SERIAL_ALTERA_UART_MAXPORTS,	// 表示这个driver支持多少个port
+	.cons		= ALTERA_UART_CONSOLE,
+};
+
+//uart_register_driver(&altera_uart_driver)
+int uart_register_driver(struct uart_driver *drv)
+{
+	struct tty_driver *normal;
+    
+	//为驱动支持的每个串口分配uart_state
+	drv->state = kcalloc(drv->nr, sizeof(struct uart_state), GFP_KERNEL);	
+    /* 分配一个tty_driver,设置部分成员,比如
+	 * 设置normal->num = drv->nr
+	 * 为normal指向的tty_driver分别分配normal->num个
+	 * tty_struct指针,ktermios指针,tty_port指针,cdev指针
+	 */
+	normal = alloc_tty_driver(drv->nr);	
+	drv->tty_driver = normal;	
+
+	/* 填充tty_driver */
+	normal->driver_name	= drv->driver_name;
+	normal->name		= drv->dev_name;		//tty_driver的名字设置为ttyAL
+	normal->major		= drv->major;
+	normal->minor_start	= drv->minor;
+	normal->flags		= TTY_DRIVER_DYNAMIC_DEV;	
+	tty_set_operations(normal, &uart_ops);		//tty_operations结构体
+
+	/* 设置每个串口uart_state中的tty_port */
+	for (i = 0; i < drv->nr; i++) {
+		struct uart_state *state = drv->state + i;
+		struct tty_port *port = &state->port;
+		tty_port_init(port);
+		port->ops = &uart_port_ops;		//tty_port_operations结构体
+	}
+
+	retval = tty_register_driver(normal);		//注册tty_driver
+
+	return retval;
+}
+```
+
+​		uart_register_driver(&altera_uart_driver)通过向内核注册一个uart_driver结构体altera_uart_driver，进入函数中根据uart_driver再分配设置注册tty_driver。需要注意tty_driver的name成员设置为传入的uart_driver的dev_name成员即ttyAL，这是open设备节点的前缀，后面会分析到。接着再继续分析注册tty_driver过程。
+
+```c
+/**************************************************
+ * 继续分析注册uart_driver过程，最后一步注册tty_driver
+ **************************************************/
+//tty_register_driver(normal)
+int tty_register_driver(struct tty_driver *driver)
+{
+	//申请设备号区域[dev, dev + driver->num)
+    dev = MKDEV(driver->major, driver->minor_start);	
+    error = register_chrdev_region(dev, driver->num, driver->name);	
+    
+    //为区域[dev, dev + driver->num)分配设置注册cdev
+    error = tty_cdev_add(driver, dev, 0, driver->num);
+}
+
+
+//tty_cdev_add(driver, dev, 0, driver->num)
+static int tty_cdev_add(struct tty_driver *driver, dev_t dev,
+		unsigned int index, unsigned int count)
+{
+    //分配设置注册cdev
+	driver->cdevs[index] = cdev_alloc();				
+	driver->cdevs[index]->ops = &tty_fops;				//字符设备操作函数
+	driver->cdevs[index]->owner = driver->owner;
+	err = cdev_add(driver->cdevs[index], dev, count);		//注册tty字符设备
+	return err;
+}
+
+static const struct file_operations tty_fops = {
+	...
+	.read		= tty_read,		//read时开始调用
+	.write		= tty_write,	//wirte时开始调用
+	.open		= tty_open,		//open时开始调用
+    ...
+};
+```
+
+​		进入tty_register_driver后首先申请能容纳所有port设备号区域，然后为区域[dev, dev + driver->num)分配设置注册cdev分配设置注册字符设备，字符设备的操作函数为&tty_fops，比如通过open(/dev/ttyALX)打开串口时就会调用到tty_open，设备节点/dev/ttyALX在后文的注册uart_port中创建。
+
+###### 注册uart_port
+
+```c
+/********************************************
+ * 从altera_uart_probe开始分析注册uart_port过程
+ ********************************************/
+static int altera_uart_probe(struct platform_device *pdev)
+{
+	struct uart_port *port;
+	struct resource *res_mem;
+	struct resource *res_irq;
+
+	port = &altera_uart_ports[i].port;		//还没设置,再下面设置
+
+	res_mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);	//reg属性
+	port->mapbase = res_mem->start;
+    
+	res_irq = platform_get_resource(pdev, IORESOURCE_IRQ, 0);	//irq属性
+	port->irq = res_irq->start;
+    
+	ret = of_property_read_u32(pdev->dev.of_node, "clock-frequency",
+					   &port->uartclk);		//clock-frequency属性
+    
+	port->membase = ioremap(port->mapbase, ALTERA_UART_SIZE);	//映射reg属性
+
+	/* 给port剩下的属性赋值 */
+	port->line = i;						//id,第一个为0
+	port->ops = &altera_uart_ops;		//串口操作函数 
+	port->dev = &pdev->dev;
+
+	platform_set_drvdata(pdev, port);	//pdev->dev->driver_data = port;
+
+	uart_add_one_port(&altera_uart_driver, port);	//向uart_driver注册一个uart_port
+
+	return 0;
+}
+
+static const struct uart_ops altera_uart_ops = {
+	...
+	.start_tx	= altera_uart_start_tx,		//wirte时最后调用
+	...
+	.startup	= altera_uart_startup,		//open时最后调用
+	...
+};
+```
+
+​		正如前文所说的，如果在设备树发现一个匹配的串口节点则调用altera_uart_probe，这是注册一个uart_port的起点。altera_uart_probe中根据port index来得到一个静态的uart_port，然后提取设备树的信息填入，另外设置一个uart_ops结构体&altera_uart_ops给uart_port，它就是串口的实际操作函数。最后通过uart_add_one_port注册一个uart_port。
+
+```c
+/**************************************************
+ * 继续分析注册uart_port过程，分析uart_add_one_port
+ **************************************************/
+//uart_add_one_port(&altera_uart_driver, port)
+int uart_add_one_port(struct uart_driver *drv, struct uart_port *uport)
+{
+	struct uart_state *state
+	struct tty_port *port;
+    
+	//提取出uart_driver中的uart_state中的tty_port
+	state = drv->state + uport->line;		
+	port = &state->port;    
+
+    //设置drv->tty_driver->ports[uport->line] = port
+	tty_port_link_device(port, drv->tty_driver, uport->line);		
+
+	//将uport->dev->driver_data设置为tty_port结构体变量port然后注册到驱动模型,
+	//然后创建设备节点/dev/ttyALX
+	tty_dev = tty_port_register_device_attr_serdev(port, drv->tty_driver,
+			uport->line, uport->dev, port, uport->tty_groups);		
+
+	return ret;
+}
+```
+
+​		uart_add_one_port做的事不复杂，就像上面所述，最后创建了设备节点后就可以使用open打开然后进一步操作了。
+
+##### 操作
+
+###### open
+
+###### read
+
+​		read在在file_operations中有上层接口，在uart_ops没有底层接口，因为底层接口是通过中断接收函数，而通过file_operations上层read接口读取底层准备好的数据或者阻塞睡眠让出cpu等待底层数据准备好后唤醒再读取。
+
+###### write
+
+
+
 #### 5.3 网卡驱动
 
 #### 5.4 pcie驱动
