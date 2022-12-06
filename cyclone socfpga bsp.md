@@ -271,9 +271,20 @@ int uart_register_driver(struct uart_driver *drv)
 	}
 
 	retval = tty_register_driver(normal);		//注册tty_driver
-
 	return retval;
 }
+
+static const struct tty_operations uart_ops = {
+    ...
+	.open		= uart_open,				//open第二调用
+	...
+};
+
+static const struct tty_port_operations uart_port_ops = {
+	...
+	.activate	= uart_port_activate,		//open第三调用
+	.shutdown	= uart_tty_port_shutdown,
+};
 ```
 
 ​		uart_register_driver(&altera_uart_driver)通过向内核注册一个uart_driver结构体altera_uart_driver，进入函数中根据uart_driver再分配设置注册tty_driver。需要注意tty_driver的name成员设置为传入的uart_driver的dev_name成员即ttyAL，这是open设备节点的前缀，后面会分析到。接着再继续分析注册tty_driver过程。
@@ -308,9 +319,9 @@ static int tty_cdev_add(struct tty_driver *driver, dev_t dev,
 
 static const struct file_operations tty_fops = {
 	...
-	.read		= tty_read,		//read时开始调用
-	.write		= tty_write,	//wirte时开始调用
-	.open		= tty_open,		//open时开始调用
+	.read		= tty_read,		//read时第一调用
+	.write		= tty_write,	//wirte第一调用
+	.open		= tty_open,		//open第一调用
     ...
 };
 ```
@@ -356,9 +367,9 @@ static int altera_uart_probe(struct platform_device *pdev)
 
 static const struct uart_ops altera_uart_ops = {
 	...
-	.start_tx	= altera_uart_start_tx,		//wirte时最后调用
+	.start_tx	= altera_uart_start_tx,		//wirte最后调用
 	...
-	.startup	= altera_uart_startup,		//open时最后调用
+	.startup	= altera_uart_startup,		//open最后调用
 	...
 };
 ```
@@ -395,7 +406,59 @@ int uart_add_one_port(struct uart_driver *drv, struct uart_port *uport)
 
 ##### 操作
 
+​		详细分析可以参考韦东山视频和文档，这里主要列出调用流程和重点概括。
+
 ###### open
+
+```c
+tty_open
+	tty_open_by_driver(device, filp);	
+		tty_lookup_driver(device, filp, &index);	//通过device的设备号找到tty_driver和index
+		tty_driver_lookup_tty(driver, filp, index);	//通过tty_driver和index找到tty_struct指针
+		tty_init_dev(driver, index);		//如果还没打开
+            alloc_tty_struct(driver, idx);	//设置tty_struct的ops为tty_driver的ops
+            tty_driver_install_tty(driver, tty);	//driver->ttys[tty->index] = tty
+	tty->ops->open(tty, filp);	//调用uart_open
+    	tty_port_open
+            port->ops->activate		//uart_port_ops.activate(uart_port_activate)
+            	uart_startup
+            		uart_port_startup
+            			uport->ops->startup	//altera_uart_ops.startup(altera_uart_startup)
+```
+
+​		以上就是open /dev/ttyALX设备节点时的调用路径，最后会调用到altera_uart_startup，最后再分析一下altera_uart_startup就结束open的分析。
+
+```c
+static int altera_uart_startup(struct uart_port *port)
+{
+	if (!port->irq) {	//如果uart没有irq则设置定时器模拟中断
+		timer_setup(&pp->tmr, altera_uart_timer, 0);
+		mod_timer(&pp->tmr, jiffies + uart_poll_timeout(port));
+	} else {			//注册中断
+		ret = request_irq(port->irq, altera_uart_interrupt, 0, DRV_NAME, port);
+	}
+}
+
+static void altera_uart_timer(struct timer_list *t)
+{
+	altera_uart_interrupt(0, port);
+	mod_timer(&pp->tmr, jiffies + uart_poll_timeout(port));
+}
+
+static irqreturn_t altera_uart_interrupt(int irq, void *data)
+{
+	//读取ALTERA_UART_STATUS_REG寄存器内容
+	isr = altera_uart_readl(port, ALTERA_UART_STATUS_REG) & pp->imr;
+
+	//只要这两位任意一位置位都会产生中断,如果有中断的话
+	if (isr & ALTERA_UART_STATUS_RRDY_MSK)
+		altera_uart_rx_chars(pp);	//取数据
+	if (isr & ALTERA_UART_STATUS_TRDY_MSK)
+		altera_uart_tx_chars(pp);	//发数据
+}
+```
+
+
 
 ###### read
 
