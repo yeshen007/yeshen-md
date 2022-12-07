@@ -174,6 +174,10 @@ Tftp下载rbf：tftp 0x8000 printhead_v3.rbf
 
 #### 5.1 watchdog驱动
 
+#####  注册
+
+#####  调试
+
 #### 5.2 tty uart驱动
 
 #####  注册
@@ -412,13 +416,13 @@ int uart_add_one_port(struct uart_driver *drv, struct uart_port *uport)
 
 ```c
 tty_open
-	tty_open_by_driver(device, filp);	
-		tty_lookup_driver(device, filp, &index);	//通过device的设备号找到tty_driver和index
-		tty_driver_lookup_tty(driver, filp, index);	//通过tty_driver和index找到tty_struct指针
-		tty_init_dev(driver, index);		//如果还没打开
-            alloc_tty_struct(driver, idx);	//设置tty_struct的ops为tty_driver的ops
-            tty_driver_install_tty(driver, tty);	//driver->ttys[tty->index] = tty
-	tty->ops->open(tty, filp);	//调用uart_open
+	tty_open_by_driver(device, filp)	
+		tty_lookup_driver(device, filp, &index)		//通过device的设备号找到tty_driver和index
+		tty_driver_lookup_tty(driver, filp, index)	//通过tty_driver和index找到tty_struct指针
+		tty_init_dev(driver, index)				//如果还没打开
+            alloc_tty_struct(driver, idx)	//设置tty_struct的ops为tty_driver的ops
+            tty_driver_install_tty(driver, tty)	//driver->ttys[tty->index] = tty
+	tty->ops->open(tty, filp)	//调用uart_open
     	tty_port_open
             port->ops->activate		//uart_port_ops.activate(uart_port_activate)
             	uart_startup
@@ -476,7 +480,7 @@ static void altera_uart_rx_chars(struct altera_uart *pp)
 		uart_insert_char(port, status, ALTERA_UART_STATUS_ROE_MSK, ch,flag);	//存入tty buffer
 	}
 
-	tty_flip_buffer_push(&port->state->port);		//通知行规层来取出tty buffer
+	tty_flip_buffer_push(&port->state->port);		//通知行规层来取出tty buffer数据放入行规层
 }
 ```
 
@@ -516,7 +520,40 @@ static void altera_uart_tx_chars(struct altera_uart *pp)
 
 ###### read
 
-​		read在在file_operations中有上层接口，在uart_ops没有底层接口，因为底层接口是通过中断接收函数，而通过file_operations上层read接口读取底层准备好的数据或者阻塞睡眠让出cpu等待底层数据准备好后唤醒再读取。
+​		read在在file_operations中有上层接口，在uart_ops没有底层接口，因为底层接口是通过中断接收函数，而通过file_operations上层read接口读取底层准备好的数据或者阻塞睡眠让出cpu等待底层数据准备好后唤醒再读取。下面看代码分析。
+
+```c
+tty_read
+	ld->ops->read(tty, file, buf, count);	//n_tty_ops.read(n_tty_read)
+```
+
+​		应用程序通过read之后首先调用的是tty_read，在这函数中主要就是调用行规层n_tty_ops的read函数n_tty_read。
+
+```c
+static ssize_t n_tty_read(struct tty_struct *tty, struct file *file,
+			 unsigned char __user *buf, size_t nr)
+{
+	DEFINE_WAIT_FUNC(wait, woken_wake_function);	//本进程的等待队列节点
+	add_wait_queue(&tty->read_wait, &wait);			//如果要睡醒使用的等待队列
+    
+    /* 一直循环直到从行规层取完nr个数据 */
+	while (nr) {
+         /* 如果行规层没有数据 */
+		if (!input_available_p(tty, 0)) {		
+			tty_buffer_flush_work(tty->port);	//刷报给行规层数据的工作队列
+			if (!input_available_p(tty, 0)) {	//如果行规层还没有数据
+				timeout = wait_woken(&wait, TASK_INTERRUPTIBLE, 
+                                     timeout);		 //没有数据则睡眠,被中断中的处理函数唤醒		
+			}
+		}
+        
+		/* 如果行规层有数据或者被唤醒了 */
+		copy_from_read_buf(tty, &b, &nr);	//从行规层读取数据
+	}
+}
+```
+
+​		这里只分析阻塞模式，不考虑超时的处理。这个函数很复杂但主要流程就像上面被删减的代码这样，如果没有数据则调用read的进程休眠，直到中断或者超时，然后醒来读取数据；如果有数据直接读数据；这个循环直到读取完nr。
 
 ###### write
 
@@ -524,11 +561,21 @@ static void altera_uart_tx_chars(struct altera_uart *pp)
 
 #### 5.3 网卡驱动
 
+#####  注册
+
+#####  调试
+
 #### 5.4 pcie驱动
+
+#####  注册
+
+#####  调试
 
 #### 5.5 mtd驱动
 
+#####  注册
 
+#####  调试
 
 
 ### 六、misc
