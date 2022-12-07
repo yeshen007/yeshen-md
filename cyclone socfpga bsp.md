@@ -431,34 +431,88 @@ tty_open
 ```c
 static int altera_uart_startup(struct uart_port *port)
 {
-	if (!port->irq) {	//如果uart没有irq则设置定时器模拟中断
+	if (!port->irq) {	//如果设备树没有irq则设置定时器模拟中断
 		timer_setup(&pp->tmr, altera_uart_timer, 0);
 		mod_timer(&pp->tmr, jiffies + uart_poll_timeout(port));
-	} else {			//注册中断
+	} else {			//如果设备树指定irq则注册中断
 		ret = request_irq(port->irq, altera_uart_interrupt, 0, DRV_NAME, port);
 	}
 }
 
+//根据uart硬件状态决定是否收发数据
+//然后继续修改定时超时时间来轮询
 static void altera_uart_timer(struct timer_list *t)
 {
 	altera_uart_interrupt(0, port);
 	mod_timer(&pp->tmr, jiffies + uart_poll_timeout(port));
 }
 
+//根据uart硬件状态决定是否收发数据
 static irqreturn_t altera_uart_interrupt(int irq, void *data)
 {
 	//读取ALTERA_UART_STATUS_REG寄存器内容
 	isr = altera_uart_readl(port, ALTERA_UART_STATUS_REG) & pp->imr;
 
-	//只要这两位任意一位置位都会产生中断,如果有中断的话
+	//如果有配置中断的话只要这两位任意一位置位都会产生中断
+    //如果没有配置中断则通过则也可以通过检查这两标志位来决定是否要取数据或发数据
 	if (isr & ALTERA_UART_STATUS_RRDY_MSK)
 		altera_uart_rx_chars(pp);	//取数据
-	if (isr & ALTERA_UART_STATUS_TRDY_MSK)
+	if (isr & ALTERA_UART_STATUS_TRDY_MSK)	
 		altera_uart_tx_chars(pp);	//发数据
 }
 ```
 
+​		正如前面所分析的，应用程序open(/dev/ttyALX)会最终调用到altera_uart_startup。它做的事看上面代码注释就清楚。最后再看看取数据和发数据的操作。
 
+```c
+static void altera_uart_rx_chars(struct altera_uart *pp)
+{    
+	//如果ALTERA_UART_STATUS_RRDY_MSK一直置位表示uart接收寄存器一直有数据到
+	//然后就将这个寄存器的数据追加发送到tty buffer,一直轮询到uart接收寄存器
+	//没有收到数据才退出轮询,最后通知行规层一次性取走tty buffer
+	while ((status = altera_uart_readl(port, ALTERA_UART_STATUS_REG)) &
+	       ALTERA_UART_STATUS_RRDY_MSK) {
+		ch = altera_uart_readl(port, ALTERA_UART_RXDATA_REG);	//读取寄存器数据
+		uart_insert_char(port, status, ALTERA_UART_STATUS_ROE_MSK, ch,flag);	//存入tty buffer
+	}
+
+	tty_flip_buffer_push(&port->state->port);		//通知行规层来取出tty buffer
+}
+```
+
+​		取数据过程如上所示，如果ALTERA_UART_STATUS_RRDY_MSK一直置位表示uart接收寄存器一直有数据到然后就将这个寄存器的数据追加发送到tty buffer,一直轮询到uart接收寄存器没有收到数据才退出轮询,最后通知行规层一次性取走tty buffer送给应用层或做相应的处理。
+
+```c
+static void altera_uart_tx_chars(struct altera_uart *pp)
+{
+	/* 应用层通过write是把数据存入uart_port的环形缓冲区而不是直接发送出去
+	 * 如果串口发送寄存器空闲则从环形缓冲区取出数据写入发送寄存器
+	 */
+	while (altera_uart_readl(port, ALTERA_UART_STATUS_REG) &
+	       ALTERA_UART_STATUS_TRDY_MSK) {
+		if (xmit->head == xmit->tail)		//如果xmit写完了则退出循环
+			break;
+		altera_uart_writel(port, xmit->buf[xmit->tail],
+		       ALTERA_UART_TXDATA_REG);		//将xmit中的一个数据写到发送寄存器
+		xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
+	}
+
+	/* 如果环形缓冲区空了则将ALTERA_UART_CONTROL_TRDY_MSK位关闭就不会
+     * 一直触发中断了,直到应用层通过write调用到altera_uart_start_tx
+     * 才重新打开,此时就会再次触发发送中断
+     * 这里还要判断xmit为空才会屏蔽ALTERA_UART_CONTROL_TRDY_MSK,
+     * 因为上面的退出while循环如果不是因为xmit为空,而是因为ALTERA_UART_STATUS_TRDY_MSK
+     * 暂时没有置位,那有可能是硬件还没将寄存器中的数据移送出去,当寄存器的数据被移送出去后
+     * 会重新ALTERA_UART_STATUS_TRDY_MSK置位,会重新产生中断或者使用定时器轮询查看到,因此数据不会丢
+	 */
+	if (xmit->head == xmit->tail) {
+		pp->imr &= ~ALTERA_UART_CONTROL_TRDY_MSK;
+		altera_uart_update_ctrl_reg(pp);
+	}
+}
+```
+
+​		发数据过程如上所示。
 
 ###### read
 
