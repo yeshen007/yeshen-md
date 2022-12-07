@@ -281,6 +281,7 @@ int uart_register_driver(struct uart_driver *drv)
 static const struct tty_operations uart_ops = {
     ...
 	.open		= uart_open,				//open第二调用
+    .write		= uart_write,				//wirte第二调用
 	...
 };
 
@@ -466,7 +467,7 @@ static irqreturn_t altera_uart_interrupt(int irq, void *data)
 }
 ```
 
-​		正如前面所分析的，应用程序open(/dev/ttyALX)会最终调用到altera_uart_startup。它做的事看上面代码注释就清楚。最后再看看取数据和发数据的操作。
+​		正如前面所分析的，应用程序open(/dev/ttyALX)会最终调用到altera_uart_startup。它做的事看上面代码注释就清楚，简单来说就是注册一个中断或者定时器函数。最后再看看取数据和发数据的操作。
 
 ```c
 static void altera_uart_rx_chars(struct altera_uart *pp)
@@ -557,7 +558,15 @@ static ssize_t n_tty_read(struct tty_struct *tty, struct file *file,
 
 ###### write
 
+```c
+tty_write
+    n_tty_write
+    	uart_write
+    		memcpy(circ->buf + circ->head, buf, c)	//将数据写入环形缓冲区
+    		altera_uart_start_tx	//设置串口发送硬件标志位(对于有中断的情况会直接触发中断)
+```
 
+​		应用层调用write进入内核的主要路径如上。所做的事情简单总结就是将数据写入环形缓冲区，然后触发中断。回顾一下前文在open中注册了中断处理函数，该中断函数根据是发送或者接收使用不同的处理，write是发送，因此会调用altera_uart_tx_chars将环形缓冲区的数据写到发送寄存器，最后关闭硬件发送中断位。
 
 #### 5.3 网卡驱动
 
