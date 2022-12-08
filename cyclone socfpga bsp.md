@@ -176,7 +176,151 @@ Tftp下载rbf：tftp 0x8000 printhead_v3.rbf
 
 #####  注册
 
-#####  调试
+```c
+/* 设备树 */
+watchdog0: watchdog@ffd02000 {		//使用了看门狗watchdog0
+    compatible = "snps,dw-wdt";		//dw_wdt.c
+    reg = <0xffd02000 0x1000>;
+    interrupts = <0 171 4>;
+    clocks = <&osc1>;
+    resets = <&rst L4WD0_RESET>;
+    status = "disabled";
+};
+&watchdog0 {		//使能了看门狗watchdog0
+	status = "okay";
+};
+
+/* dw_wdt.c */
+static const struct of_device_id dw_wdt_of_match[] = {
+	{ .compatible = "snps,dw-wdt", },	//匹配设备树
+	{ /* sentinel */ }
+};
+MODULE_DEVICE_TABLE(of, dw_wdt_of_match);
+
+static struct platform_driver dw_wdt_driver = {
+	.probe		= dw_wdt_drv_probe,		//触发
+	.remove		= dw_wdt_drv_remove,
+	.driver		= {
+		.name	= "dw_wdt",
+		.of_match_table = of_match_ptr(dw_wdt_of_match),
+		.pm	= &dw_wdt_pm_ops,
+	},
+};
+
+module_platform_driver(dw_wdt_driver);
+```
+
+​		设备树中定义了两个看门狗节点，但只有watchdog0的status为okay，因此它会转化成platform_device注册到平台总线，所以会和驱动dw_wdt_driver匹配触发dw_wdt_drv_probe函数。
+
+```c
+static int dw_wdt_drv_probe(struct platform_device *pdev)
+{
+	wdd->ops = &dw_wdt_ops;		//看门狗操作函数
+	ret = watchdog_register_device(wdd);	//注册看门狗
+}
+
+//open write ioctl close设备节点最后会调用到
+static const struct watchdog_ops dw_wdt_ops = {
+	.start		= dw_wdt_start,		//将超时时间写入看门狗计数器寄存器然后启动
+	.stop		= dw_wdt_stop,		//停止看门狗
+	.ping		= dw_wdt_ping,		//刷新看门狗计数器,也就是恢复成超时
+	.set_timeout	= dw_wdt_set_timeout,	//设置超时
+	.get_timeleft	= dw_wdt_get_timeleft,	//获得超时
+	.restart	= dw_wdt_restart,			//刷新计数器或者使能看门狗
+};
+```
+
+​		在dw_wdt_drv_probe函数中主要就是注册了看门狗，在注册之前设置它的操作函数，这些函数会在应用程序操作设备节点时最后调用到来实际处理看门狗。接下再继续深入分析注册看门狗。
+
+```c
+watchdog_register_device
+    __watchdog_register_device
+    	watchdog_dev_register
+    		watchdog_cdev_register
+```
+
+​		注册的主要调用链如上，主要工作在watchdog_cdev_register。
+
+```c
+static int watchdog_cdev_register(struct watchdog_device *wdd)
+{
+	//如果id为0会额外注册watchdog_miscdev,并创建设备节点/dev/watchdog
+	if (wdd->id == 0) {
+		old_wd_data = wd_data;	//在watchdog_open中使用,使操作/dev/watchdog相当于/dev/watchdog0
+		err = misc_register(&watchdog_miscdev);		//注册杂项设备和创建设备节点/dev/watchdog
+	}
+
+	dev_set_name(&wd_data->dev, "watchdog%d", wdd->id);	//设置字符设备对应的名字/dev/watchdogX
+	cdev_init(&wd_data->cdev, &watchdog_fops);		//设置字符设备的操作函数
+	cdev_device_add(&wd_data->cdev, &wd_data->dev);	//注册字符设备和创建设备节点/dev/watchdogX
+}
+
+//open write ioctl close设备节点首先会调用到
+static const struct file_operations watchdog_fops = {
+	.write		= watchdog_write,			
+	.unlocked_ioctl	= watchdog_ioctl,		
+	.open		= watchdog_open,			
+	.release	= watchdog_release,
+};
+
+static struct miscdevice watchdog_miscdev = {
+	.minor		= WATCHDOG_MINOR,
+	.name		= "watchdog",		// /dev/watchdog
+	.fops		= &watchdog_fops,	// 无论是/dev/watchdog还是/dev/watchdogX都是这个
+};
+```
+
+​		对于每个看门狗会创建一个/dev/watchdogX和相应的字符设备，对于第一个还会创建一个额外的/dev/watchdog和杂项设备，操作/dev/watchdog和操作/dev/watchdog0效果一样。
+
+#####  操作
+
+​		看门狗有很多操作，主要常用几种操作，我在watchdogops.c中实现了以下几种常用操作的测试用例，具体原理看这个测试用例和内核驱动分析，这里列出了调用路径。
+
+```c
+//启动看门狗(默认超时30s在驱动注册时设置，可以自己改掉)
+open("/dev/watchdog", O_RDWR)
+    watchdog_open
+        watchdog_start
+            if (watchdog_running)
+                dw_wdt_ping		//如果本来就运行的则刷新看门狗计数器
+            else
+                dw_wdt_start	//如果还没运行则将超时写入计数器然后启动
+
+//喂狗
+ioctl(fd, WDIOC_KEEPALIVE, NULL)  
+	watchdog_ioctl
+		watchdog_ping
+			__watchdog_ping
+				dw_wdt_ping		//刷新看门狗计数器
+
+//设置超时
+ioctl(fd, WDIOC_SETTIMEOUT, (unsigned long)&my_time)  
+	watchdog_ioctl
+		watchdog_set_timeout
+			dw_wdt_set_timeout	//设置超时
+		watchdog_ping
+			__watchdog_ping
+				dw_wdt_ping		//刷新看门狗计数器
+
+//停止看门狗
+arg = WDIOS_DISABLECARD;    
+ioctl(fd, WDIOC_SETOPTIONS, (unsigned long)&arg)
+	watchdog_ioctl
+    	watchdog_stop
+    		dw_wdt_stop		//停止看门狗
+    
+//启动看门狗另一种方法
+arg = WDIOS_ENABLECARD;    
+ioctl(fd, WDIOC_SETOPTIONS, (unsigned long)&arg)
+	watchdog_ioctl
+		watchdog_start
+			if (watchdog_running)
+				dw_wdt_ping		//如果本来就运行的则刷新看门狗计数器
+			else
+				dw_wdt_start	//如果还没运行则将超时写入计数器然后启动    
+```
+
+
 
 #### 5.2 tty uart驱动
 
@@ -184,18 +328,18 @@ Tftp下载rbf：tftp 0x8000 printhead_v3.rbf
 
 ```c
 /* 设备树 */
-	ph0_uart@ff200800 {
-		compatible = "altr,uart-1.0";	//altera-uart.c
-		reg = <0xff200800 0x20>;
-		interrupt-parent = <&intc>;
-		interrupts = <0x0 0x4a IRQ_TYPE_LEVEL_HIGH>;	//fpga-irq34,发送和接收共用
-		interrupt-names = "altera_uart0";	
-		clock-frequency = <50000000>;
-	};	
-	ph1_uart@ff200820 {
-		compatible = "altr,uart-1.0";
-		...
-	};	
+ph0_uart@ff200800 {
+    compatible = "altr,uart-1.0";	//altera-uart.c
+    reg = <0xff200800 0x20>;
+    interrupt-parent = <&intc>;
+    interrupts = <0x0 0x4a IRQ_TYPE_LEVEL_HIGH>;	//fpga-irq34,发送和接收共用
+    interrupt-names = "altera_uart0";	
+    clock-frequency = <50000000>;
+};	
+ph1_uart@ff200820 {
+    compatible = "altr,uart-1.0";
+    ...
+};	
 
 /* 驱动altera-uart.c */
 static const struct of_device_id altera_uart_match[] = {
