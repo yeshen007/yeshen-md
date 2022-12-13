@@ -716,6 +716,173 @@ tty_write
 
 #####  注册
 
+```c
+/* socfpga.dtsi */
+gmac0: ethernet@ff700000 {
+    compatible = "altr,socfpga-stmmac", "snps,dwmac-3.70a", "snps,dwmac";	//dwmac-socfpga.c
+    altr,sysmgr-syscon = <&sysmgr 0x60 0>;		//
+    reg = <0xff700000 0x2000>;
+    interrupts = <0 115 4>;		//mac对cpu的中断号
+    interrupt-names = "macirq";					//
+    mac-address = [00 00 00 00 00 00];/* Filled in by U-Boot */
+    clocks = <&emac_0_clk>;
+    clock-names = "stmmaceth";
+    snps,multicast-filter-bins = <256>;
+    snps,perfect-filter-entries = <128>;
+    resets = <&rst EMAC0_RESET>;	//保留和删除都没事
+    reset-names = "stmmaceth";		//保留和删除都没事
+    //max-frame-size = <3800>;		//保留和删除都没事,而且好像对ifconfig mtu没影响,都显示1500
+    tx-fifo-depth = <4096>;
+    rx-fifo-depth = <4096>;
+    status = "disabled";
+};
+
+/* socfpga_cyclone5_socdk.dts */
+&gmac0 {		//socfpga-dwmac.txt  snps,dwmac.yaml dwmac-socfpga.c
+    status = "okay";
+    phy-mode = "rgmii";		
+    snps,phy-addr = <10>;	//为什么一定要这个属性?答:因为stmmac_open中需要
+    mdio0 {
+        compatible = "snps,dwmac-mdio";		//snps,dwmac.yaml中的示例有,源代码也有
+        #address-cells = <1>;
+        #size-cells = <0>;
+        /* dp83869hw */
+        phy0: ethernet-phy@0 {		//ti,dp83869.yaml dp83869.c
+            compatible = "ethernet-phy-id2000.a0f1";	//通过uboot命令得到id 0x2000a0f1,
+            //reg = <10>;		//可加可不加。如何读取phy addr？答:使用uboot的mii命令 mii read 0xa 2
+            ti,op-mode = <DP83869_RGMII_1000_BASE>;
+            rx-fifo-depth = <DP83869_PHYCR_FIFO_DEPTH_4_B_NIB>;
+            tx-fifo-depth = <DP83869_PHYCR_FIFO_DEPTH_4_B_NIB>;
+            ti,clk-output-sel = <DP83869_CLK_O_SEL_REF_CLK>;
+        };
+    };
+};
+
+/* dwmac-socfpga.c */
+static const struct socfpga_dwmac_ops socfpga_gen5_ops = {
+	.set_phy_mode = socfpga_gen5_set_phy_mode,
+};
+
+static const struct of_device_id socfpga_dwmac_match[] = {
+	{ .compatible = "altr,socfpga-stmmac", .data = &socfpga_gen5_ops },	//匹配设备树 
+	{ .compatible = "altr,socfpga-stmmac-a10-s10", .data = &socfpga_gen10_ops },
+	{ }
+};
+MODULE_DEVICE_TABLE(of, socfpga_dwmac_match);
+
+static struct platform_driver socfpga_dwmac_driver = {
+	.probe  = socfpga_dwmac_probe,	//注册
+	.remove = stmmac_pltfr_remove,
+	.driver = {
+		.name           = "socfpga-dwmac",
+		.pm		= &socfpga_dwmac_pm_ops,
+		.of_match_table = socfpga_dwmac_match,	//匹配设备树 
+	},
+};
+module_platform_driver(socfpga_dwmac_driver);
+```
+
+​		平台驱动和节点匹配后调用socfpga_dwmac_probe，主要流程如下。
+
+```c
+static int socfpga_dwmac_probe(struct platform_device *pdev)
+{
+	int ret;
+	struct plat_stmmacenet_data *plat_dat;	//保存设备树节点或者设备的除了mac地址,irq,reg之外的大部分资源
+	struct stmmac_resources stmmac_res;		//保存设备树节点或者设备的mac地址,irq,reg资源
+	struct device *dev = &pdev->dev;
+	struct socfpga_dwmac *dwmac;				//代表dwmac的struct device的封装结构体
+	struct net_device *ndev;
+	struct stmmac_priv *stpriv;					//net_device的私有数据
+	const struct socfpga_dwmac_ops *ops;
+
+	ops = device_get_match_data(&pdev->dev);
+	//从设备树获取macirq对应的虚拟中断号和reg对应的虚拟地址
+	ret = stmmac_get_platform_resources(pdev, &stmmac_res);	
+	//从设备树获取mac地址填充到stmmac_res.mac和其他设备树信息填充到plat_dat
+	plat_dat = stmmac_probe_config_dt(pdev, &stmmac_res.mac);	
+	dwmac = devm_kzalloc(dev, sizeof(*dwmac), GFP_KERNEL);
+	ret = socfpga_dwmac_parse_data(dwmac, dev);	//获取mac寄存器信息
+	dwmac->ops = ops;						//&socfpga_gen5_ops
+	plat_dat->bsp_priv = dwmac;	
+	plat_dat->fix_mac_speed = socfpga_dwmac_fix_mac_speed;		
+
+	/* 重点
+     * 根据plat_dat和stmmac_res构造net_device和私有数据stmmac_priv,然后注册到内核
+	 */
+	ret = stmmac_dvr_probe(&pdev->dev, plat_dat, &stmmac_res);	
+
+	ndev = platform_get_drvdata(pdev);	//ndev = pdev->dev->driver_data
+	stpriv = netdev_priv(ndev);			//stpriv =  (char *)ndev + sizeof(struct net_device)
+	ret = ops->set_phy_mode(dwmac);		//通过socfpga_gen5_set_phy_mode真正的硬件设置phy mode
+
+	return 0;
+}
+```
+
+​		socfpga_dwmac_probe中根据设备树节点提取信息到plat_dat和stmmac_res中，然后根据plat_dat和stmmac_res通过stmmac_dvr_probe构造net_device和私有数据stmmac_priv，注册到内核，最后调用socfpga_gen5_set_phy_mode设置硬件phy mode。重点是注册net_device，下面分析。
+
+```c
+int stmmac_dvr_probe(struct device *device,
+		     struct plat_stmmacenet_data *plat_dat,
+		     struct stmmac_resources *res)
+{
+	struct net_device *ndev = NULL;
+	struct stmmac_priv *priv;
+
+	//分配net_device和私有数据struct stmmac_priv的空间
+    //ndev->name = eth%d,还没完整
+    //ndev->ethtool_ops = &default_ethtool_ops
+	ndev = devm_alloc_etherdev_mqs(device, sizeof(struct stmmac_priv),
+				       MTL_MAX_TX_QUEUES, MTL_MAX_RX_QUEUES);		
+
+	//重新设置ndev->ethtool_ops = &stmmac_ethtool_ops
+	stmmac_set_ethtool_ops(ndev);	
+    
+    //mac地址写入priv->dev->dev_addr
+	if (!IS_ERR_OR_NULL(res->mac))
+		memcpy(priv->dev->dev_addr, res->mac, ETH_ALEN);	
+    
+	//复位
+	if (priv->plat->stmmac_rst) {
+		ret = reset_control_assert(priv->plat->stmmac_rst);
+		reset_control_deassert(priv->plat->stmmac_rst);
+	}
+
+	// 一些硬件初始化和mac地址检验 
+	ret = stmmac_hw_init(priv);
+	stmmac_check_ether_addr(priv);
+    
+	netif_set_real_num_rx_queues(ndev, priv->plat->rx_queues_to_use);	//配置接收队列
+	netif_set_real_num_tx_queues(ndev, priv->plat->tx_queues_to_use);	//配置发送队列    
+
+	ndev->netdev_ops = &stmmac_netdev_ops;		//重点操作函数
+
+
+	/* Setup channels NAPI */
+	maxq = max(priv->plat->rx_queues_to_use, priv->plat->tx_queues_to_use);
+
+	/* 设置napi函数到napi_struct */
+	for (queue = 0; queue < maxq; queue++) {
+		struct stmmac_channel *ch = &priv->channel[queue];
+		if (queue < priv->plat->rx_queues_to_use) 
+			netif_napi_add(ndev, &ch->rx_napi, stmmac_napi_poll_rx,
+				       NAPI_POLL_WEIGHT);		//设置接收的napi poll函数
+		if (queue < priv->plat->tx_queues_to_use) 
+			netif_tx_napi_add(ndev, &ch->tx_napi, stmmac_napi_poll_tx,
+					  NAPI_POLL_WEIGHT);	//设置发送的napi poll函数
+	}
+
+	ret = stmmac_mdio_register(ndev);		/* 重点 */
+	ret = stmmac_phy_setup(priv);	//分配设置phy相关数据结构
+	ret = register_netdev(ndev);	//注册net_device
+
+	return ret;
+}
+```
+
+
+
 #####  调试
 
 #### 5.4 pcie驱动
