@@ -803,7 +803,9 @@ static int socfpga_dwmac_probe(struct platform_device *pdev)
 	//从设备树获取macirq对应的虚拟中断号和reg对应的虚拟地址
 	ret = stmmac_get_platform_resources(pdev, &stmmac_res);	
 	//从设备树获取mac地址填充到stmmac_res.mac和其他设备树信息填充到plat_dat
+    //通过设备树属性snps,phy-addr得到plat_dat->phy_addr = 10
 	plat_dat = stmmac_probe_config_dt(pdev, &stmmac_res.mac);	
+    
 	dwmac = devm_kzalloc(dev, sizeof(*dwmac), GFP_KERNEL);
 	ret = socfpga_dwmac_parse_data(dwmac, dev);	//获取mac寄存器信息
 	dwmac->ops = ops;						//&socfpga_gen5_ops
@@ -822,7 +824,7 @@ static int socfpga_dwmac_probe(struct platform_device *pdev)
 }
 ```
 
-​		socfpga_dwmac_probe中根据设备树节点提取信息到plat_dat和stmmac_res中，然后根据plat_dat和stmmac_res通过stmmac_dvr_probe构造net_device和私有数据stmmac_priv，注册到内核，最后调用socfpga_gen5_set_phy_mode设置硬件phy mode。重点是注册net_device，下面分析。
+​		socfpga_dwmac_probe中根据设备树节点提取信息到plat_dat和stmmac_res中，然后根据plat_dat和stmmac_res通过stmmac_dvr_probe构造net_device和私有数据stmmac_priv，注册到内核，最后调用socfpga_gen5_set_phy_mode设置硬件phy mode。下面继续分析stmmac_dvr_probe。
 
 ```c
 int stmmac_dvr_probe(struct device *device,
@@ -881,6 +883,121 @@ int stmmac_dvr_probe(struct device *device,
 	return ret;
 }
 ```
+
+​		进入stmmac_mdio_register分析。
+
+```c
+int stmmac_mdio_register(struct net_device *ndev)
+{
+    int err = 0;
+    struct mii_bus *new_bus;
+    struct stmmac_priv *priv = netdev_priv(ndev);
+    struct device_node *mdio_node = priv->plat->mdio_node;	
+    struct device *dev = ndev->dev.parent;
+    int addr, found, max_addr;
+
+    new_bus = mdiobus_alloc();	//分配mdio bus结构体
+    
+    //设置mdio bus结构体
+    new_bus->name = "stmmac";
+    new_bus->read = &stmmac_mdio_read;		//读phy芯片的函数
+    new_bus->write = &stmmac_mdio_write;	//写phy芯片的函数
+    max_addr = PHY_MAX_ADDR;			   //mdio支持的最大phy数目32,因此最大的phy addr是3
+    new_bus->priv = ndev;
+    new_bus->phy_mask = mdio_bus_data->phy_mask;
+    new_bus->parent = priv->device;
+
+    /* 重点 */
+    err = of_mdiobus_register(new_bus, mdio_node);	//注册mdio bus
+
+    priv->mii = new_bus;
+    return 0;
+}
+```
+
+​		进入of_mdiobus_register看看。
+
+```c
+int of_mdiobus_register(struct mii_bus *mdio, struct device_node *np)
+{
+	struct device_node *child;
+	bool scanphys = false;
+	int addr, rc;
+
+	mdio->phy_mask = ~0;	//屏蔽mdiobus_register中扫描生成phy device
+	mdio->dev.of_node = np;
+	mdio->dev.fwnode = of_fwnode_handle(np);
+
+	/* 重点 */
+	//注册mdio bus,扫描创建注册phy device.注意上面mdio->phy_mask对每个phy addr
+	//都屏蔽了扫描,因此这里不会扫描创建注册任何一个phy device.
+	rc = mdiobus_register(mdio);		
+
+    //检查设备树mdio节点,对于每个子节点如果有reg属性则创建注册phy device
+    //如果有任何一个子节点没有reg那么scanphys = true,并且不会改回false
+    //对每个有reg的子节点则从它的reg提取phy addr,从compatile提取phy id(如果提取
+    //不出phy id则创建注册mdio_device代表mdio上通用的设备,这种情况忽略),然后根据
+    //phy addr和phy id创建注册phy device.
+    for_each_available_child_of_node(np, child) {
+        addr = of_mdio_parse_addr(&mdio->dev, child);	//提取reg属性作为phy addr
+        if (addr < 0) {		//如果有任何一个子节点没有reg那么scanphys = true,并且不会改回false
+            scanphys = true;	
+            continue;
+        }
+
+        if (of_mdiobus_child_is_phy(child))	//查看compatile属性是否为ethernet-phy-idX.Y格式
+            //从compatile提取phy id,和已经提取的phy addr一起创建注册phy device
+            rc = of_mdiobus_register_phy(mdio, child, addr);
+        else
+            rc = of_mdiobus_register_device(mdio, child, addr);
+    }
+    
+	//如果scanphys不为true说明上面的mdio设备树节点的子节点都满足条件
+	//并被创建和注册所以就直接返回
+    if (!scanphys)
+        return 0;
+
+    //如果到了这里说明前面mdio设备树节点存在子节点没有reg属性因此不能直接创建注册phy device,
+    //因此这里扫描这些没有reg属性的子节点,通过从0轮询addr来获取一个没有被注册的phy addr,
+    //然后从compatile中提取phy id,根据这个phy addr和phy id创建注册phy device,
+    //需要注意该phy addr只是软件上和注册的phy device对应,硬件上不一定对应,但是也能正常工作,
+    //因为内核已经记录就会认为phy addr就是phy device
+    for_each_available_child_of_node(np, child) {
+        if (of_find_property(child, "reg", NULL))	//跳过有reg的节点
+            continue;
+
+        //对于没有reg的节点,从0开始找到一个没有被注册的phy addr
+        //然后注册phy device
+        for (addr = 0; addr < PHY_MAX_ADDR; addr++) {
+            if (mdiobus_is_registered_device(mdio, addr))	//跳过已经占用的phy addr
+                continue;
+
+            if (of_mdiobus_child_is_phy(child)) 
+                rc = of_mdiobus_register_phy(mdio, child, addr);
+        }
+    }
+
+    return 0;
+}
+```
+
+​		回到stmmac_dvr_probe函数，看完了stmmac_mdio_register后最后一个重点要看的是register_netdev。
+
+```c
+int register_netdevice(struct net_device *dev)
+{
+	int ret;
+	struct net *net = dev_net(dev);
+
+	//eth%d变成eth0或者eth1等等
+	ret = dev_get_valid_name(net, dev, dev->name);
+
+	//注册
+	ret = netdev_register_kobject(dev);	
+}
+```
+
+​		register_netdevice主要就是设置名字，然后注册。
 
 #####  操作
 
