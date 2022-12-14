@@ -560,6 +560,7 @@ int uart_add_one_port(struct uart_driver *drv, struct uart_port *uport)
 ###### open
 
 ```c
+/* uartfd = open("/dev/ttyAL0", ...) */
 tty_open
 	tty_open_by_driver(device, filp)	
 		tty_lookup_driver(device, filp, &index)		//通过device的设备号找到tty_driver和index
@@ -668,6 +669,7 @@ static void altera_uart_tx_chars(struct altera_uart *pp)
 ​		read在在file_operations中有上层接口，在uart_ops没有底层接口，因为底层接口是通过中断接收函数，而通过file_operations上层read接口读取底层准备好的数据或者阻塞睡眠让出cpu等待底层数据准备好后唤醒再读取。下面看代码分析。
 
 ```c
+/* read(uartfd, ...) */
 tty_read
 	ld->ops->read(tty, file, buf, count);	//n_tty_ops.read(n_tty_read)
 ```
@@ -703,6 +705,7 @@ static ssize_t n_tty_read(struct tty_struct *tty, struct file *file,
 ###### write
 
 ```c
+/* write(uartfd, ...) */
 tty_write
     n_tty_write
     	uart_write
@@ -807,9 +810,8 @@ static int socfpga_dwmac_probe(struct platform_device *pdev)
 	plat_dat->bsp_priv = dwmac;	
 	plat_dat->fix_mac_speed = socfpga_dwmac_fix_mac_speed;		
 
-	/* 重点
-     * 根据plat_dat和stmmac_res构造net_device和私有数据stmmac_priv,然后注册到内核
-	 */
+	/* 重点 */
+     //根据plat_dat和stmmac_res构造net_device和私有数据stmmac_priv,然后注册到内核
 	ret = stmmac_dvr_probe(&pdev->dev, plat_dat, &stmmac_res);	
 
 	ndev = platform_get_drvdata(pdev);	//ndev = pdev->dev->driver_data
@@ -835,34 +837,29 @@ int stmmac_dvr_probe(struct device *device,
     //ndev->ethtool_ops = &default_ethtool_ops
 	ndev = devm_alloc_etherdev_mqs(device, sizeof(struct stmmac_priv),
 				       MTL_MAX_TX_QUEUES, MTL_MAX_RX_QUEUES);		
-
-	//重新设置ndev->ethtool_ops = &stmmac_ethtool_ops
-	stmmac_set_ethtool_ops(ndev);	
+	
+	stmmac_set_ethtool_ops(ndev);		//重新设置ndev->ethtool_ops = &stmmac_ethtool_ops
     
-    //mac地址写入priv->dev->dev_addr
-	if (!IS_ERR_OR_NULL(res->mac))
+	if (!IS_ERR_OR_NULL(res->mac))		//mac地址写入priv->dev->dev_addr
 		memcpy(priv->dev->dev_addr, res->mac, ETH_ALEN);	
     
-	//复位
-	if (priv->plat->stmmac_rst) {
+	if (priv->plat->stmmac_rst) {		//复位网口
 		ret = reset_control_assert(priv->plat->stmmac_rst);
 		reset_control_deassert(priv->plat->stmmac_rst);
 	}
 
-	// 一些硬件初始化和mac地址检验 
+	// mac硬件设置和mac地址检验 
 	ret = stmmac_hw_init(priv);
 	stmmac_check_ether_addr(priv);
     
 	netif_set_real_num_rx_queues(ndev, priv->plat->rx_queues_to_use);	//配置接收队列
-	netif_set_real_num_tx_queues(ndev, priv->plat->tx_queues_to_use);	//配置发送队列    
+	netif_set_real_num_tx_queues(ndev, priv->plat->tx_queues_to_use);	//配置发送队列  
+    
+    /* 重点 */
+	ndev->netdev_ops = &stmmac_netdev_ops;		//操作函数
 
-	ndev->netdev_ops = &stmmac_netdev_ops;		//重点操作函数
-
-
-	/* Setup channels NAPI */
+	// 设置napi函数到napi_struct 
 	maxq = max(priv->plat->rx_queues_to_use, priv->plat->tx_queues_to_use);
-
-	/* 设置napi函数到napi_struct */
 	for (queue = 0; queue < maxq; queue++) {
 		struct stmmac_channel *ch = &priv->channel[queue];
 		if (queue < priv->plat->rx_queues_to_use) 
@@ -873,17 +870,45 @@ int stmmac_dvr_probe(struct device *device,
 					  NAPI_POLL_WEIGHT);	//设置发送的napi poll函数
 	}
 
-	ret = stmmac_mdio_register(ndev);		/* 重点 */
-	ret = stmmac_phy_setup(priv);	//分配设置phy相关数据结构
+    /* 重点 */
+	ret = stmmac_mdio_register(ndev);	//注册mdio结构体和扫描注册phy结构体
+    
+	ret = stmmac_phy_setup(priv);	//phy硬件设置
+    
+    /* 重点 */
 	ret = register_netdev(ndev);	//注册net_device
 
 	return ret;
 }
 ```
 
+#####  操作
+
+###### 打开网口
+
+```c
+/* ifconfig ethX up */
+```
+
+###### 关闭网口
+
+```c
+/* ifconfig ethX down */
+```
+
+###### 接收数据
+
+```c
+/* read(sockfd, ...) */
+```
+
+###### 发送数据
+
+```c
+/* write(sockfd, ...) */
+```
 
 
-#####  调试
 
 #### 5.4 pcie驱动
 
