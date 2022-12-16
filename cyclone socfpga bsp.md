@@ -726,7 +726,7 @@ gmac0: ethernet@ff700000 {
     altr,sysmgr-syscon = <&sysmgr 0x60 0>;		//
     reg = <0xff700000 0x2000>;
     interrupts = <0 115 4>;		//mac对cpu的中断号
-    interrupt-names = "macirq";					//
+    interrupt-names = "macirq";		//
     mac-address = [00 00 00 00 00 00];/* Filled in by U-Boot */
     clocks = <&emac_0_clk>;
     clock-names = "stmmaceth";
@@ -741,6 +741,8 @@ gmac0: ethernet@ff700000 {
 };
 
 /* socfpga_cyclone5_socdk.dts */
+//如何读取phy addr? 答:使用uboot的mii命令 mii read 0xa 2
+//如何读取phy id? 答:通过uboot命令得到id 0x2000a0f1
 &gmac0 {		//socfpga-dwmac.txt  snps,dwmac.yaml dwmac-socfpga.c
     status = "okay";
     phy-mode = "rgmii";		
@@ -751,8 +753,8 @@ gmac0: ethernet@ff700000 {
         #size-cells = <0>;
         /* dp83869hw */
         phy0: ethernet-phy@0 {		//ti,dp83869.yaml dp83869.c
-            compatible = "ethernet-phy-id2000.a0f1";	//通过uboot命令得到id 0x2000a0f1,
-            //reg = <10>;		//可加可不加。如何读取phy addr？答:使用uboot的mii命令 mii read 0xa 2
+            compatible = "ethernet-phy-id2000.a0f1";	//先uboot读取phy id再和ethernet-phy-id拼接
+            reg = <10>;		//可加可不加,如果加了一定要等于snps,phy-addr,但有个疑问为什么可以不加?
             ti,op-mode = <DP83869_RGMII_1000_BASE>;
             rx-fifo-depth = <DP83869_PHYCR_FIFO_DEPTH_4_B_NIB>;
             tx-fifo-depth = <DP83869_PHYCR_FIFO_DEPTH_4_B_NIB>;
@@ -1001,13 +1003,92 @@ int register_netdevice(struct net_device *dev)
 
 #####  操作
 
-###### 打开网口
+###### 启动网卡
 
 ```c
 /* ifconfig ethX up */
+...
+	stmmac_open	
+		...			//硬件相关设置不看
+		alloc_dma_desc_resources		//申请发送和接收的dma资源
+		init_dma_desc_rings				//dma资源生成ring buffer
+		request_irq(dev->irq, stmmac_interrupt, ...)	//硬件中断处理函数,发送接收共用
+    	//启动这些接收和发送队列的napi,没挂入每cpu队列轮询,需要在接收到中断才挂入每cpu队列
+		stmmac_enable_all_queues(priv);	
+		stmmac_start_all_queues(priv);	//允许上层调用hard_start_xmit
+		
 ```
 
-###### 关闭网口
+​		上面是启动网卡做的主要工作，这些步骤意思都很明确，或者看看代码就清楚了，唯一需要再细看的是中断处理函数。
+
+```c
+static irqreturn_t stmmac_interrupt(int irq, void *dev_id)		
+{
+	/* 重点 */
+	//读取硬件寄存器判断是接收中断还是发送中断
+	//以及对应的哪些队列状态是来数据的
+	//然后对每个有数据的队列调用napi_schedule来将本队列
+	//的napi_struct挂入每cpu队列并启动软中断
+	stmmac_dma_interrupt(priv);		
+
+	return IRQ_HANDLED;
+}
+```
+
+​		重点只有stmmac_dma_interrupt，再继续进去。
+
+```c
+static void stmmac_dma_interrupt(struct stmmac_priv *priv)
+{
+	int status[max_t(u32, MTL_MAX_TX_QUEUES, MTL_MAX_RX_QUEUES)];
+    
+	/* 重点 */
+	//每个status数组元素既可以表示接收也可以表示发送还可以表示两者都有
+	for (chan = 0; chan < channels_to_check; chan++)
+		status[chan] = stmmac_napi_check(priv, chan);	
+}
+```
+
+​		再进去看看stmmac_napi_check。
+
+```c
+static int stmmac_napi_check(struct stmmac_priv *priv, u32 chan)
+{
+	//读寄存器查看发送或者接收或者两者都有
+	int status = stmmac_dma_interrupt_status(priv, priv->ioaddr,
+						 &priv->xstats, chan);
+	struct stmmac_channel *ch = &priv->channel[chan];	//每个channel包含发送和接收队列
+
+	/* 硬件发现有接收中断状态
+	 * 首先通过napi_schedule_prep查看当前接收队列napi是否正在poll.如果有直接跳过.
+	 * 如果没有则通过stmmac_disable_dma_irq关闭当前接收队列的中断,
+	 * 但没有关闭其他队列的中断,这些中断通过一个共享中断来注册,就是注册中断函数这个共享中断.
+	 * 最后通过__napi_schedule_irqoff将当前接收队列的napi挂入每cpu队列并开启软中断
+	 */
+	if ((status & handle_rx) && (chan < priv->plat->rx_queues_to_use)) {
+		if (napi_schedule_prep(&ch->rx_napi)) {		//看当前队列的napi是否在运行
+			stmmac_disable_dma_irq(priv, priv->ioaddr, chan);	//关闭当前队列的中断
+			__napi_schedule_irqoff(&ch->rx_napi);		//将napi挂入每cpu队列并开启软中断
+			status |= handle_tx;		//我认为这是为父级函数处理异常情况的
+		}
+	}
+
+	/* 硬件发现有发送中断状态
+	 * 先通过napi_schedule_prep查看当前发送队列napi是否正在poll.如果有直接跳过.
+	 * 如果没有则通过__napi_schedule_irqoff将当前发送队列的napi挂入每cpu队列并开启软中断
+	 * 注意这里是napi_schedule_irqoff而上面是__napi_schedule_irqoff,
+	 * 还有无论是接收还是发送硬件中断都是触发NET_RX_SOFTIRQ软中断
+	 */
+	if ((status & handle_tx) && (chan < priv->plat->tx_queues_to_use))
+		napi_schedule_irqoff(&ch->tx_napi);		//先napi_schedule_prep再__napi_schedule_irqoff
+
+	return status;
+}
+```
+
+
+
+###### 关闭网卡
 
 ```c
 /* ifconfig ethX down */
@@ -1024,6 +1105,7 @@ int register_netdevice(struct net_device *dev)
 ```c
 /* write(sockfd, ...) */
 ```
+
 
 
 
