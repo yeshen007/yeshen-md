@@ -719,6 +719,8 @@ tty_write
 
 #####  注册
 
+######  注册mac
+
 ```c
 /* socfpga.dtsi */
 gmac0: ethernet@ff700000 {
@@ -1001,19 +1003,61 @@ int register_netdevice(struct net_device *dev)
 
 ​		register_netdevice主要就是设置名字，然后注册。
 
+###### 注册phy
+
+```c
+static int __init phy_init(void)
+{
+	int rc;
+
+	/* 注册mdio总线 */
+	rc = mdio_bus_init();	
+
+	/* 将genphy_driver注册到mdio总线,probe在里面设置为phy_probe */
+	rc = phy_driver_register(&genphy_driver, THIS_MODULE);
+    
+	return rc;
+}
+```
+
+​		首先内核phy_init先注册mdio总线和一个通用的phy驱动genphy_driver，如果没有自己可以匹配的驱动就会用这个来匹配。
+
+```c
+#define DP83869_PHY_ID		0x2000a0f1		//phy id
+#define DP83869_DEVADDR		0x0A			//phy addr
+
+static struct phy_driver dp83869_driver[] = {
+	{
+		PHY_ID_MATCH_MODEL(DP83869_PHY_ID),
+		.probe          = dp83869_probe,
+		.config_init	= dp83869_config_init,
+	},
+};
+        
+module_phy_driver(dp83869_driver);
+
+static struct mdio_device_id __maybe_unused dp83869_tbl[] = {
+	{ PHY_ID_MATCH_MODEL(DP83869_PHY_ID) },
+	{ }
+};
+MODULE_DEVICE_TABLE(mdio, dp83869_tbl);
+```
+
+​		我们项目的phy有另外的驱动注册，不详细分析了，都是些硬件设置的东西。
+
 #####  操作
 
 ###### 启动网卡
 
 ```c
 /* ifconfig ethX up */
-...
+...		//调用路径上网查
 	stmmac_open	
-		...			//硬件相关设置不看
+		stmmac_init_phy(dev);			//创建phylink
 		alloc_dma_desc_resources		//申请发送和接收的dma资源
 		init_dma_desc_rings				//dma资源生成ring buffer
 		request_irq(dev->irq, stmmac_interrupt, ...)	//硬件中断处理函数,发送接收共用
-    	//启动这些接收和发送队列的napi,没挂入每cpu队列轮询,需要在接收到中断才挂入每cpu队列
+		//启动这些接收和发送队列的napi,没挂入每cpu队列轮询,需要在接收到中断才挂入每cpu队列
 		stmmac_enable_all_queues(priv);	
 		stmmac_start_all_queues(priv);	//允许上层调用hard_start_xmit
 		
@@ -1086,24 +1130,70 @@ static int stmmac_napi_check(struct stmmac_priv *priv, u32 chan)
 }
 ```
 
-
-
 ###### 关闭网卡
 
 ```c
 /* ifconfig ethX down */
+...		//调用路径上网查
+    stmmac_release
+        ...		//和stammc_open相反的操作
 ```
 
 ###### 接收数据
 
 ```c
-/* read(sockfd, ...) */
+/* step 1 */
+网卡收到数据，收满一个dma长度的数据后自动启动dma搬到内存
+    
+/* step 2 */
+dma搬到内存后触发中断(stmmac_interrupt)
+    
+/* step 3 */
+查看哪个通道发生了中断，并且查看发生中断的通道是因为接收还是发送触发的中断
+    
+/* step 4 */
+因为是接收触发的，所以会stmmac_disable_dma_irq关闭当前通道的中断，然后通过
+__napi_schedule_irqoff(&ch->rx_napi)将当前接收队列的napi挂入每cpu队列并
+开启软中断net_rx_action
+    
+/* step 5 */
+net_rx_action轮询每cpu队列最终会调用到ch->rx_napi的stmmac_napi_poll_rx
+    
+/* step 6 */
+static int stmmac_napi_poll_rx(struct napi_struct *napi, int budget)
+{
+	work_done = stmmac_rx(priv, budget, chan);	//轮询接收了work_done个dma包
+
+	//如果轮询接收到的dma包小于budget则说明网卡接收缓冲空了,
+	//并且通过napi_complete_done通知内核成功从每cpu队列取下napi_struct
+	//后调用stmmac_enable_dma_irq重新开启中断
+	if (work_done < budget && napi_complete_done(napi, work_done))
+		stmmac_enable_dma_irq(priv, priv->ioaddr, chan);
+	return work_done;
+} 
 ```
 
 ###### 发送数据
 
 ```c
-/* write(sockfd, ...) */
+/* step 1 */
+将数据从应用层传到协议栈最后到驱动层
+    
+/* step 2 */
+dma搬到网卡缓冲区然后硬件自动发送出去，发送出去后触发硬件中断(stmmac_interrupt 注意：发送中断和接收中断是同一个)
+    
+/* step 3 */
+查看哪个通道发生了中断，并且查看发生中断的通道是因为接收还是发送触发的中断
+    
+/* step 4 */  
+因为是发送触发的，所以会通过napi_schedule_irqoff(&ch->tx_napi)将当前接
+收队列的napi挂入每cpu队列并开启软中断net_rx_action(注意，和接收一样也是net_rx_action)    
+
+/* step 5 */   
+net_rx_action轮询每cpu队列最终会调用到ch->tx_napi的stmmac_napi_poll_tx  
+    
+/* step 6 */  
+stmmac_napi_poll_tx负责清除skb和dma ringbuf内存    
 ```
 
 
