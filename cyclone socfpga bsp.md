@@ -1197,11 +1197,37 @@ stmmac_napi_poll_tx负责清除skb和dma ringbuf内存
 ```
 
 
-
-
 #### 5.4 pcie驱动
 
 #####  注册
+
+```c
+msi0: msi@0xFF200000 {
+	compatible = "altr,msi-1.0";		//pcie-altera-msi.c
+	reg = < 0xFF200000 0x00000010
+		0xFF200010 0x00000080 >;
+	reg-names = "csr", "vector_slave";
+	interrupt-parent = < &hps_0_arm_gic_0 >;
+	interrupts = < 0 42 4 >;
+	msi-controller = < 1 >;
+	num-vectors = < 32 >;
+};
+
+pcie_0: pcie@0x0 {
+	compatible = "altr,pcie-root-port-1.0";		//pcie-altera.c
+	reg = < 0xc0000000 0x20000000
+		0xFF240000 0x00004000  >;
+	reg-names = “Txs”, “Cra”;
+	interrupt-parent = < &hps_0_arm_gic_0 >;
+	interrupts = < 0 43 4 >;
+	interrupt-controller;
+	#interrupt-cells = < 1 >;
+	altr,msi = <&msi0>;
+	device_type = "pci";
+};
+```
+
+
 
 #####  调试
 
