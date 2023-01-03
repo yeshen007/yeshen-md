@@ -1264,6 +1264,8 @@ stmmac_napi_poll_tx负责清除skb和dma ringbuf内存
 
 #####  注册
 
+> linux 3.7
+
 ```c
 msi0: msi@0xFF200000 {
 	compatible = "altr,msi-1.0";		//pcie-altera-msi.c
@@ -1290,14 +1292,11 @@ pcie_0: pcie@0x0 {
 };
 ```
 
+​		注册核心就是pcie-altera.c中altera_pcie_init注册了一个平台驱动altera_pcie_driver，它和pcie@0x0节点生成的平台设备匹配调用altera_pcie_probe，在这里扫描pcie总线对每个存在的pcie设置生成pci device并挂到pci_bus_type。
 
+#####  操作
 
-#####  总结
-
-```c
-/* root complex如何扫描pcie设备 */
-
-```
+> linux-socfpga
 
 
 
