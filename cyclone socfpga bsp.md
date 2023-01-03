@@ -113,6 +113,69 @@ make busybox
 
 #### 4.1 uboot命令方法
 
+##### 新布局
+
+```c
+/*
+ * 不分区镜像烧写
+ */ 
+
+/* 不覆盖环境变量烧写preloader */
+mw.b 0x8000 0xff 0x40000
+tftp 0x8000 preloader-mkpimage.bin.primary.secondry
+sf update 0x8000 0x00000 0x40000  
+/* 覆盖环境变量烧写preloader */
+mw.b 0x8000 0xff 0x50000
+tftp 0x8000 preloader-mkpimage.bin.primary.secondry
+sf update 0x8000 0x00000 0x50000   
+    
+/* 烧写dtb */
+mw.b 0x8000 0xff 0x10000
+tftp 0x8000 socfpga_cyclone5_socdk.dtb.primary.secondry
+sf update 0x8000 0x50000 0x10000
+    
+/* 烧写uboot */
+mw.b 0x8000 0xff 0x40000
+tftp 0x8000 u-boot.img.primary.secondry
+sf update 0x8000 0x60000 0x40000    
+    
+/* 烧写rootfs */
+mw.b 0x8000 0xff 0x4000000
+tftp 0x8000 rootfs.jffs2
+sf update 0x8000 0x2000000 0x4000000
+    
+
+/*
+ * primary镜像烧写
+ */ 
+    
+/* 烧写uImage */
+mw.b 0x8000 0xff 0x600000
+tftp 0x8000 uImage.primary
+sf update 0x8000 0xa0000 0x600000
+
+/* 烧写rbf */
+mw.b 0x8000 0xff 0x700000
+tftp 0x8000 rbf.primary
+sf update 0x8000 0x700000 0x700000
+
+/*
+ * secondry镜像烧写
+ */ 
+    
+/* 烧写uImage */
+mw.b 0x8000 0xff 0x600000
+tftp 0x8000 uImage.secondry
+sf update 0x8000 0x10a0000 0x600000
+
+/* 烧写rbf */
+mw.b 0x8000 0xff 0x700000
+tftp 0x8000 rbf.secondry
+sf update 0x8000 0x1700000 0x700000   
+```
+
+##### 老布局
+
 ```c
 /* 在uboot命令行阶段设置环境变量和激活qspi flash */
 setenv ipaddr 192.168.26.111	//设置板子的ip，到内核会被重新设置我们不管，反正uboot阶段就是我们设置的
@@ -1217,7 +1280,7 @@ pcie_0: pcie@0x0 {
 	compatible = "altr,pcie-root-port-1.0";		//pcie-altera.c
 	reg = < 0xc0000000 0x20000000
 		0xFF240000 0x00004000  >;
-	reg-names = “Txs”, “Cra”;
+	reg-names = “Txs”, “Cra”;	// Tx slave port, Control Register Access port
 	interrupt-parent = < &hps_0_arm_gic_0 >;
 	interrupts = < 0 43 4 >;
 	interrupt-controller;
@@ -1229,7 +1292,14 @@ pcie_0: pcie@0x0 {
 
 
 
-#####  调试
+#####  总结
+
+```c
+/* root complex如何扫描pcie设备 */
+
+```
+
+
 
 #### 5.5 mtd驱动
 
