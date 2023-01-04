@@ -228,7 +228,7 @@ Tftp下载rbf：tftp 0x8000 printhead_v3.rbf
 用jtag烧写zImage：quartus_hps -c 1 -o p -a 0xa0000 zImage
 用jtag烧写dtb：quartus_hps -c 1 -o p -a 0x50000 socfpga_cyclone5_socdk.dtb
 用jtag烧写rootfs：quartus_hps -c 1 -o p -a 0x800000 rootfs.jffs2
-用jtag烧写rbf：quartus_hps -c 1 -o p -a 0x1400000 soc_system.rbf
+用jtag烧写rbf：quartus_hps -c 1 -o p -a 0x1400000 printhead_v3.rbf
 ```
 
 
@@ -1296,9 +1296,55 @@ pcie_0: pcie@0x0 {
 
 #####  操作
 
-> linux-socfpga
+> linux-3.7
 
+```c
+/*
+ * dmaxfer.c
+ */
+int main()
+{
+	...
+	//获取rp和ep的传输长度取最小值datlen
+	if (get_xfer_size(&rpdatlen, &epdatlen)) {		
+		printf("Fail to get data transfer size\n");
+		return -1;
+	}
+	datlen = rpdatlen < epdatlen ? rpdatlen : epdatlen;
 
+	...
+
+	//分别启动AVERAGE_LOOP次rpdma_xfer和epdma_xfer
+	//rpdma_xfer(PCI_TX_IOCTL,...)是从RP OCM写到EP OCM
+	//epdma_xfer(PCI_TX_IOCTL,...)是从EP OCM写到RP OCM
+	for (loop = 1 ; loop <= AVERAGE_LOOP ; loop++) {
+		...
+		timediff = rpdma_xfer(PCI_TX_IOCTL, loop,
+					  PATTERN_MASK_A + loop, datlen);
+		...
+		timediff = epdma_xfer(PCI_TX_IOCTL, loop,
+					  PATTERN_MASK_B + loop, datlen);
+		...
+	}
+	...
+	
+	//分别启动AVERAGE_LOOP次rpdma_xfer和epdma_xfer
+	//rpdma_xfer(SYS_TX_IOCTL,...)是从RP System Memory写到EP OCM
+	//epdma_xfer(SYS_TX_IOCTL,...)是从EP OCM写到RP System Memory
+	for (loop = 1 ; loop <= AVERAGE_LOOP ; loop++) {
+		...
+		timediff = rpdma_xfer(SYS_TX_IOCTL, loop,
+					  PATTERN_MASK_A+loop, datlen);
+		...
+		timediff = epdma_xfer(SYS_TX_IOCTL, loop,
+					  PATTERN_MASK_B+loop, datlen);
+		...
+	}
+	...
+}
+```
+
+​		测试流程如上所示，具体分析自己结合驱动altera_rpde.c和altera_epde.c看代码。
 
 #### 5.5 mtd驱动
 
