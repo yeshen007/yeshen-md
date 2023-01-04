@@ -171,7 +171,7 @@ sf update 0x8000 0x10a0000 0x600000
 /* 烧写rbf */
 mw.b 0x8000 0xff 0x700000
 tftp 0x8000 rbf.secondry
-sf update 0x8000 0x1700000 0x700000   
+sf update 0x8000 0x1700000 0x700000
 ```
 
 ##### 老布局
@@ -1346,11 +1346,15 @@ int main()
 
 ​		测试流程如上所示，具体分析自己结合驱动altera_rpde.c和altera_epde.c看代码。
 
-#### 5.5 mtd驱动
+#### 5.5 usb驱动
 
 #####  注册
 
-#####  调试
+```c
+
+```
+
+
 
 
 ### 六、misc
