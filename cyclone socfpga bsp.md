@@ -1613,16 +1613,21 @@ make socfpga_defconfig
 配置CONFIG_HIGH_RES_TIMERS
 配置CONFIG_NO_HZ		//可能不用配这个
 make zImage -j8
+//uImage需要拷贝zImage到linux-socfpga目录下make uImage LOADADDR=0x8000 -j8
 ...
 ```
 
 ##### 6.5.2 公司驱动print.ko移植
 
 ```c
-
+不用修改代码直接在rt内核源码下编译放在板子上跑，效果差不多。
 ```
 
 #### 6.6 xenomai
+
+> 参考资料：Real-time in embedded Linux systems
+> 				  [王顺刚](https://mp.weixin.qq.com/s/hphTnrGCYZT1vp_WRjKA0w)
+> 				  [彭伟林](https://blog.csdn.net/pwl999/article/details/109412539)
 
 ##### 6.6.1 打补丁配置编译
 
@@ -1659,10 +1664,13 @@ make zImage -j8
 ##### 6.6.2 xenomai用户空间
 
 ```c
-//使用buildroot
+//使用buildroot构造xenomai应用环境
 Target packages  
     -> Real-Time
     	-> Xenomai Userspace
+    
+//配置编译xenomai应用程序
+//TODO 
 ```
 
 ##### 6.6.3 xenomai驱动
@@ -1674,7 +1682,8 @@ Target packages
 ##### 6.6.4 linux、preempt rt和xenomai的性能测试对比
 
 ```c
-
+//使用stress和latency和cyclictest
+//TODO
 ```
 
 #### 6.7 toolchain
