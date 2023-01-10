@@ -1449,7 +1449,7 @@ cd ~/yezheng/socfpga/buildroot
 make clean
 
 /* 配置 */
-cp yzconfig .config 
+cp yzconfig .config
 make menuconfig
 
 /* 编译 */
@@ -1623,6 +1623,13 @@ make zImage -j8
 不用修改代码直接在rt内核源码下编译放在板子上跑，效果差不多。
 ```
 
+##### 6.5.3 preempt rt大致原理
+
+```c
+1.普通的不可抢占和不可睡眠锁变为可抢占和睡眠锁，并且可抢占睡眠锁支持优先级继承，raw_开头的不变
+2.强制中断线程化，个别部分保持原来方式
+```
+
 #### 6.6 xenomai
 
 > 参考资料：Real-time in embedded Linux systems
@@ -1658,7 +1665,11 @@ make socfpga_defconfig
 去掉配置CONFIG_MIGRATION	//通过警告下面的内存管理去掉内存规整
 make zImage -j8
 ...
-     
+   
+//make socfpga_defconfig或者类似的配置时有可能出现以下错误信息：
+init/Kconfig:2053: can't open file "arch/$SRCARCH/xenomai/Kconfig"
+//直接把init/Kconfig:2053中的$SRCARCH改成arm
+    
 ```
 
 ##### 6.6.2 xenomai用户空间
@@ -1676,7 +1687,7 @@ Target packages
 ##### 6.6.3 xenomai驱动
 
 ```c
-
+//TODO
 ```
 
 ##### 6.6.4 linux、preempt rt和xenomai的性能测试对比
@@ -1685,6 +1696,14 @@ Target packages
 //使用stress和latency和cyclictest
 //TODO
 ```
+
+##### 6.6.5 xenomai大致原理
+
+```c
+
+```
+
+
 
 #### 6.7 toolchain
 
