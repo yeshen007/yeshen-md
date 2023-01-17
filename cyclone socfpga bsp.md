@@ -1356,23 +1356,55 @@ int main()
 
 
 
-
 ### 六、misc
 
-#### 6.1 挂载nfs
+#### 6.1 嵌入式文件系统操作
+
+##### 6.1.1 nfs文件系统操作
 
 ```c
-//启动后手动挂载到一个指定目录
-mount -t nfs -o nolock 192.168.26.133:/home/hanglory/nfs_share /root/nfs
+/* 启动后手动挂载到一个指定目录 */
+mount -t nfs -o nolock 192.168.26.10:/home/hanglory/nfs_share /root/nfs
 mount -t debugfs none /sys/kernel/debug	//挂载debugfs 
     
-//bootloader阶段挂载为根文件系统
+/* bootloader阶段挂载为根文件系统 */
 bootcmd.nfs=run qspifpga; run bridge_enable_handoff; run qspiload; run nfsboot
 nfsroot=192.168.26.133:/home/hanglory/nfs_share/rootfs-best
 nfsboot=setenv bootargs console=ttyS0,115200 root=/dev/nfs rw ip=dhcp nfsroot=${nfsroot};bootz ${loadaddr} - ${fdtaddr}
 
-//制作nfs根文件系统
+/* 制作nfs根文件系统 */
 正常制作得到tar然后解压到/home/hanglory/nfs_share/rootfs-best
+```
+
+##### 6.1.2 ext和jffs文件系统操作
+
+```c
+/*
+ * ext2
+ */
+/* 镜像文件形式 */
+sudo dd if=/dev/zero of=./my-ext2-image bs=1k count=512	//制作镜像
+sudo mkfs.ext2 ./my-ext2-image							//格式化
+sudo mount -o loop ./my-ext2-image /mnt/mymount			//挂载
+
+/* 设备节点形式 */
+sudo mkfs.ext2 /dev/sdb1				//格式化
+sudo mount /dev/sdb1 /mnt/mymount    //挂载
+    
+    
+/* 
+ * jffs2
+ */
+mkdir my-jffs2-rootfs    
+sudo mkfs.jffs2 -e 0x10000 -d my-jffs2-rootfs -o rootfs.jffs2	//格式化
+//以下都是挂载需要做的    
+sudo modprobe jffs2    										
+sudo modprobe mtdblock 
+sudo modprobe mtdram
+sudo dd if=rootfs.jffs2 of=/dev/mtdblock0
+sudo mount -t jffs2 /dev/mtdblock0 /mnt/mymount
+    
+//注意：以上操作都是在ubuntu主机上操作
 ```
 
 #### 6.2 ssh
@@ -1381,6 +1413,7 @@ nfsboot=setenv bootargs console=ttyS0,115200 root=/dev/nfs rw ip=dhcp nfsroot=${
 /* 服务器配置文件 */
 /etc/ssh/sshd_config
 PermitRootLogin yes		//允许root用户登录
+PermitEmptyPasswords yes	//不需要密码
 Port 22	//登录端口
 
 /* 客户端配置文件 */
@@ -1633,8 +1666,10 @@ make zImage -j8
 #### 6.6 xenomai
 
 > 参考资料：Real-time in embedded Linux systems
-> 				  [王顺刚](https://mp.weixin.qq.com/s/hphTnrGCYZT1vp_WRjKA0w)
-> 				  [彭伟林](https://blog.csdn.net/pwl999/article/details/109412539)
+> 				  [王顺刚xenomai](https://blog.csdn.net/qq_22654551/article/details/106038163)
+> 				  [王顺刚xenomai](https://mp.weixin.qq.com/s/hphTnrGCYZT1vp_WRjKA0w)
+> 				  [彭伟林xenomai](https://blog.csdn.net/pwl999/article/details/109412539)
+> 				  [嵌入式cyclictest](https://blog.csdn.net/qq_34539334/article/details/116325088)
 
 ##### 6.6.1 打补丁配置编译
 
@@ -1676,9 +1711,19 @@ init/Kconfig:2053: can't open file "arch/$SRCARCH/xenomai/Kconfig"
 
 ```c
 //使用buildroot构造xenomai应用环境
+//效果不太好，首先版本匹配不好，还有也没有xenomai工具只有库
 Target packages  
     -> Real-Time
     	-> Xenomai Userspace
+
+//使用xenomai包构造xenomai应用环境
+//编译得到的cyclictest在xenomai/demo里
+cd xenomai-3.1
+cd xenomai-3.1
+./configure CFLAGS="-march=armv7-a -mtune=cortex-a9 -mfloat-abi=hard -mfpu=neon -ffast-math" --host=arm-linux-gnueabihf --with-core=cobalt --enable-smp 
+mkdir -p build-arm
+make -j$(nproc) DESTDIR=`pwd`/build-arm install
+sudo cp -r build-arm/usr/xenomai myrootfs/usr/
     
 //配置编译xenomai应用程序
 //TODO 
@@ -1693,8 +1738,9 @@ Target packages
 ##### 6.6.4 linux、preempt rt和xenomai的性能测试对比
 
 ```c
-//使用stress和latency和cyclictest
-//TODO
+//使用stress和cyclictest
+//stress在buildroot上有，cyclictest按照上面的文章编译安装
+
 ```
 
 ##### 6.6.5 xenomai大致原理
@@ -1770,4 +1816,3 @@ cmd_hangloryboot.c	//legacy
 hanglory_spl_spi.c	//legacy
 spl.c
 ```
-
