@@ -1379,6 +1379,8 @@ nfsboot=setenv bootargs console=ttyS0,115200 root=/dev/nfs rw ip=dhcp nfsroot=${
 ##### 6.1.2 ext和jffs文件系统操作
 
 ```c
+//注意：以下操作都是在ubuntu主机上操作
+
 /*
  * ext2
  */
@@ -1396,15 +1398,14 @@ sudo mount /dev/sdb1 /mnt/mymount    //挂载
  * jffs2
  */
 mkdir my-jffs2-rootfs    
-sudo mkfs.jffs2 -e 0x10000 -d my-jffs2-rootfs -o rootfs.jffs2	//格式化
-//以下都是挂载需要做的    
-sudo modprobe jffs2    										
-sudo modprobe mtdblock 
-sudo modprobe mtdram
-sudo dd if=rootfs.jffs2 of=/dev/mtdblock0
-sudo mount -t jffs2 /dev/mtdblock0 /mnt/mymount
-    
-//注意：以上操作都是在ubuntu主机上操作
+sudo mkfs.jffs2 -e 0x10000 -d my-jffs2-rootfs -o rootfs.jffs2	//格式化  
+sudo modprobe jffs2    							//挂载前需要加载的驱动1				
+sudo modprobe mtdblock 							//挂载前需要加载的驱动2
+sudo modprobe mtdram total_size=16384			 //挂载前需要加载的驱动3
+sudo dd if=rootfs.jffs2 of=/dev/mtdblock0			//挂载step1
+sudo mount -t jffs2 /dev/mtdblock0 /mnt/mymount		//挂载step2
+...												//读写/mnt/mymount
+sudo umount /mnt/mymount						//卸载后/dev/mtdblock0会自动写入rootfs.jffs2
 ```
 
 #### 6.2 ssh
