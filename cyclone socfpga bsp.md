@@ -179,7 +179,8 @@ sf update 0x8000 0x1700000 0x700000
 ```c
 /* 在uboot命令行阶段设置环境变量和激活qspi flash */
 setenv ipaddr 192.168.26.111	//设置板子的ip，到内核会被重新设置我们不管，反正uboot阶段就是我们设置的
-setenv serverip 192.168.26.133 	//设置tftp服务器的ip，下载的是/home/hanglory/tftpboot中的文件   
+setenv serverip 192.168.26.133 	//设置tftp服务器的ip，下载的是/home/hanglory/tftpboot中的文件  
+setenv ethaddr 12:32:43:c3:ed:12	//设置板子的mac地址    
   
 /* 激活qspi */   
 sf probe	
@@ -1364,7 +1365,7 @@ int main()
 
 ```c
 /* 启动后手动挂载到一个指定目录 */
-mount -t nfs -o nolock 192.168.26.10:/home/hanglory/nfs_share /root/nfs
+mount -t nfs -o nolock 192.168.26.26:/home/hanglory/nfs_share /root/nfs
 mount -t debugfs none /sys/kernel/debug	//挂载debugfs 
     
 /* bootloader阶段挂载为根文件系统 */
@@ -1671,6 +1672,7 @@ make zImage -j8
 > 				  [王顺刚xenomai](https://mp.weixin.qq.com/s/hphTnrGCYZT1vp_WRjKA0w)
 > 				  [彭伟林xenomai](https://blog.csdn.net/pwl999/article/details/109412539)
 > 				  [嵌入式cyclictest](https://blog.csdn.net/qq_34539334/article/details/116325088)
+> 				  [王顺刚xenomai](https://www.cnblogs.com/wsg1100/p/13338052.html)
 
 ##### 6.6.1 打补丁配置编译
 
@@ -1727,13 +1729,19 @@ make -j$(nproc) DESTDIR=`pwd`/build-arm install
 sudo cp -r build-arm/usr/xenomai myrootfs/usr/
     
 //配置编译xenomai应用程序
-//TODO 
+//将以下放入一个makefile中
+XENO_DESTDIR:=/home/hanglory/yezheng/misc/socfpga-xenomai/xenomai-3.1/build-arm
+XENO_CONFIG:=$(XENO_DESTDIR)/usr/xenomai/bin/xeno-config
+XENO_POSIX_CFLAGS:=$(shell DESTDIR=$(XENO_DESTDIR) $(XENO_CONFIG) --skin=posix --cflags)
+XENO_POSIX_LDFLAGS:=$(shell DESTDIR=$(XENO_DESTDIR) $(XENO_CONFIG) --skin=posix --ldflags)
+all:
+	arm-linux-gnueabihf-gcc $(XENO_POSIX_CFLAGS) demo.c -o demo $(XENO_POSIX_LDFLAGS)
 ```
 
 ##### 6.6.3 xenomai驱动
 
 ```c
-//TODO
+//TODO(暂时放着)
 ```
 
 ##### 6.6.4 linux、preempt rt和xenomai的性能测试对比
@@ -1741,7 +1749,7 @@ sudo cp -r build-arm/usr/xenomai myrootfs/usr/
 ```c
 //使用stress和cyclictest
 //stress在buildroot上有，cyclictest按照上面的文章编译安装
-
+//TODO
 ```
 
 ##### 6.6.5 xenomai大致原理
