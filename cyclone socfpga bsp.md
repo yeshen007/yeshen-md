@@ -384,7 +384,11 @@ ioctl(fd, WDIOC_SETOPTIONS, (unsigned long)&arg)
 				dw_wdt_start	//如果还没运行则将超时写入计数器然后启动    
 ```
 
+#####  简要总结
 
+```c
+
+```
 
 #### 5.2 tty uart驱动
 
@@ -778,6 +782,12 @@ tty_write
 ```
 
 ​		应用层调用write进入内核的主要路径如上。所做的事情简单总结就是将数据写入环形缓冲区，然后触发中断。回顾一下前文在open中注册了中断处理函数，该中断函数根据是发送或者接收使用不同的处理，write是发送，因此会调用altera_uart_tx_chars将环形缓冲区的数据写到发送寄存器，最后关闭硬件发送中断位。
+
+#####  简要总结
+
+```c
+
+```
 
 #### 5.3 网卡驱动
 
@@ -1260,6 +1270,11 @@ net_rx_action轮询每cpu队列最终会调用到ch->tx_napi的stmmac_napi_poll_
 stmmac_napi_poll_tx负责清除skb和dma ringbuf内存    
 ```
 
+#####  简要总结
+
+```c
+
+```
 
 #### 5.4 pcie驱动
 
@@ -1347,6 +1362,12 @@ int main()
 
 ​		测试流程如上所示，具体分析自己结合驱动altera_rpde.c和altera_epde.c看代码。
 
+#####  简要总结
+
+```c
+
+```
+
 #### 5.5 usb驱动
 
 #####  注册
@@ -1354,6 +1375,13 @@ int main()
 ```c
 
 ```
+
+#####  简要总结
+
+```c
+
+```
+
 
 
 
@@ -1399,13 +1427,13 @@ sudo mount /dev/sdb1 /mnt/mymount    //挂载
  * jffs2
  */
 mkdir my-jffs2-rootfs    
-sudo mkfs.jffs2 -e 0x10000 -d my-jffs2-rootfs -o rootfs.jffs2	//格式化  
-sudo modprobe jffs2    							//挂载前需要加载的驱动1				
-sudo modprobe mtdblock 							//挂载前需要加载的驱动2
-sudo modprobe mtdram total_size=16384			 //挂载前需要加载的驱动3
-sudo dd if=rootfs.jffs2 of=/dev/mtdblock0			//挂载step1
-sudo mount -t jffs2 /dev/mtdblock0 /mnt/mymount		//挂载step2
-...												//读写/mnt/mymount
+sudo mkfs.jffs2 -e 0x10000 -d my-jffs2-rootfs -o rootfs.jffs2.xenomai	//格式化  
+sudo modprobe jffs2    										//挂载前需要加载的驱动1				
+sudo modprobe mtdblock 										//挂载前需要加载的驱动2
+sudo modprobe mtdram total_size=8192 erase_size=64			 //挂载前需要加载的驱动3
+sudo dd if=rootfs.jffs2.xenomai of=/dev/mtdblock0			//挂载step1
+sudo mount -t jffs2 /dev/mtdblock0 /mnt/mymount				//挂载step2
+...														//读写/mnt/mymount
 sudo umount /mnt/mymount						//卸载后/dev/mtdblock0会自动写入rootfs.jffs2
 ```
 
@@ -1658,7 +1686,7 @@ make zImage -j8
 不用修改代码直接在rt内核源码下编译放在板子上跑，效果差不多。
 ```
 
-##### 6.5.3 preempt rt大致原理
+##### 6.5.3 简要总结
 
 ```c
 1.普通的不可抢占和不可睡眠锁变为可抢占和睡眠锁，并且可抢占睡眠锁支持优先级继承，raw_开头的不变
@@ -1752,13 +1780,11 @@ all:
 //TODO
 ```
 
-##### 6.6.5 xenomai大致原理
+##### 6.6.5 简要总结
 
 ```c
 
 ```
-
-
 
 #### 6.7 toolchain
 
