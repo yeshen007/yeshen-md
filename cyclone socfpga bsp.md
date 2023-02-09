@@ -141,7 +141,7 @@ sf update 0x8000 0x60000 0x40000
     
 /* 烧写rootfs */
 mw.b 0x8000 0xff 0x4000000
-tftp 0x8000 rootfs.jffs2
+tftp 0x8000 rootfs.jffs2.primary.secondry
 sf update 0x8000 0x2000000 0x4000000
     
 
@@ -1393,7 +1393,7 @@ int main()
 
 ```c
 /* 启动后手动挂载到一个指定目录 */
-mount -t nfs -o nolock 192.168.26.26:/home/hanglory/nfs_share /root/nfs
+mount -t nfs -o nolock 192.168.26.109:/home/hanglory/nfs_share /root/nfs
 mount -t debugfs none /sys/kernel/debug	//挂载debugfs 
     
 /* bootloader阶段挂载为根文件系统 */
