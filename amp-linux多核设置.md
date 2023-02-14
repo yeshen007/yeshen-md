@@ -15,7 +15,7 @@ start_kernel()
 		}
 
 /* step 2 
- * 设置present位图,不会超过possible,是能scu,启动present位图中所有的核
+ * 设置present位图,不会超过possible,使能scu,启动present位图中所有的核
  * 注意amp中副核已经启动,所以smp_init()中啥也没做
  * 在smp中会启动副核并且设置online位图
  */

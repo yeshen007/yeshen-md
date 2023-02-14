@@ -178,8 +178,8 @@ sf update 0x8000 0x1700000 0x700000
 
 ```c
 /* 在uboot命令行阶段设置环境变量和激活qspi flash */
-setenv ipaddr 192.168.26.111	//设置板子的ip，到内核会被重新设置我们不管，反正uboot阶段就是我们设置的
-setenv serverip 192.168.26.133 	//设置tftp服务器的ip，下载的是/home/hanglory/tftpboot中的文件  
+setenv ipaddr 192.168.26.108	//设置板子的ip，到内核会被重新设置我们不管，反正uboot阶段就是我们设置的
+setenv serverip 192.168.26.109 	//设置tftp服务器的ip，下载的是/home/hanglory/tftpboot中的文件  
 setenv ethaddr 12:32:43:c3:ed:12	//设置板子的mac地址    
   
 /* 激活qspi */   
@@ -1425,6 +1425,7 @@ sudo mount /dev/sdb1 /mnt/mymount    //挂载
     
 /* 
  * jffs2
+ * 这种方法目前有问题
  */
 mkdir my-jffs2-rootfs    
 sudo mkfs.jffs2 -e 0x10000 -d my-jffs2-rootfs -o rootfs.jffs2.xenomai	//格式化  
@@ -1435,6 +1436,12 @@ sudo dd if=rootfs.jffs2.xenomai of=/dev/mtdblock0			//挂载step1
 sudo mount -t jffs2 /dev/mtdblock0 /mnt/mymount				//挂载step2
 ...														//读写/mnt/mymount
 sudo umount /mnt/mymount						//卸载后/dev/mtdblock0会自动写入rootfs.jffs2
+    
+/* 
+ * jffs2
+ * 这种方法ok
+ */ 
+sudo mkfs.jffs2 -r /mnt/mymount -e 64 -o rootfs.jffs2
 ```
 
 #### 6.2 ssh
