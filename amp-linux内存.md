@@ -1,5 +1,4 @@
 <h1 align="center" style="color:red">amp linux内存</h1>
-
 [TOC]
 ### 一、参考引用
 
@@ -121,9 +120,10 @@ ENTRY(stext)
 	 * r8 = phys_offset, r9 = cpuid, r10 = procinfo
 	 */
 	.....
-	/* 设置部分(内核镜像所在物理区域的部分)一级页表的条目，设置为section，
+	/* 设置部分页表(主要是内核镜像所在物理区域的部分),
+	 * 设置为section,恒等映射,内核会在后面的paging_int重新设置为page形式
      * 返回一级页表的物理地址给r4
-	*/
+	 */
 	bl	__create_page_tables
 	/*
 	 * The following calls CPU specific code in a position independent
@@ -137,7 +137,7 @@ ENTRY(stext)
 	...
     /* r8 = 页表的物理地址 */
 	mov	r8, r4				
-	ARM(	add	pc, r10, #PROCINFO_INITFUNC	)	//设置TTBR1指向swapper_pg_dir页表物理地址
+	ARM( add	pc, r10, #PROCINFO_INITFUNC	)	//设置TTBR1指向swapper_pg_dir页表物理地址
 	...
     /* 设置TTBR0指向swapper_pg_dir页表物理地址，然后使能mmu并跳到__mmap_switched的虚拟地址 */
 1:	b	__enable_mmu		
@@ -191,11 +191,11 @@ __create_page_tables:
 	mov	r5, r5, lsr #SECTION_SHIFT	//r5 = __turn_mmu_on的物理段号（r5 >> 20）
 	mov	r6, r6, lsr #SECTION_SHIFT	//r6 = __turn_mmu_on_end的物理段号（r6 >> 20）
 
-	/*  r3 = 一个物理段号为__turn_mmu_on的物理段号的一级页表条目，
+	/*  r3 = 一个物理段号为__turn_mmu_on的物理段号的一级页表条目,
 	 *	r3 = __cpu_mm_mmu_flags | (__turn_mmu_on的物理段号 << 20)
 	 */
 1:	orr	r3, r7, r5, lsl #SECTION_SHIFT	
-	/* 将r3中的页表条目写到r5代表的虚拟地址对应的地址，
+	/* 将r3中的页表条目写到r5代表的虚拟地址对应的地址,
 	 * 因此这是一个虚拟和物理相同的映射
 	 */
 	str	r3, [r4, r5, lsl #PMD_ORDER]	//identity mapping
@@ -217,7 +217,7 @@ __create_page_tables:
      * r6 = bss段虚拟结束地址对应的内核一级页表表项的物理地址
      */
 	add	r6, r4, r6, lsr #(SECTION_SHIFT - PMD_ORDER)	
-1:	str	r3, [r0], #1 << PMD_ORDER//将该页表项设置为r3，即映射到物理地址phys_offset，同时r0更新
+1:	str	r3, [r0], #1 << PMD_ORDER	//将该页表项设置为r3，即映射到物理地址phys_offset，同时r0更新
 	add	r3, r3, #1 << SECTION_SHIFT
 	cmp	r0, r6
 	bls	1b
@@ -495,6 +495,13 @@ static void __init devicemaps_init(struct machine_desc *mdesc)
 	flush_cache_all();			
 }
 ```
+
+#### 3、amp_config.h和pgtable.h
+
+```c
+是amp方案内核虚拟地址空间的一些修改，主要是将vmalloc顶部压缩给amp使用
+```
+
 
 
 

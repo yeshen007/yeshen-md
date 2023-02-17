@@ -7,7 +7,7 @@
 
 #### 1、汇编阶段的处理
 
-​		发生中断时，cpu进入irq异常模式，会跑到异常向量表运行。linux在之前已经初始化了异常向量表和异常处理代码，异常向量表在虚拟地址0xffff0000处。异常向量表和处理代码在arch/arm/kernel/entry-armv.S中定义。
+​		发生中断时，cpu进入irq异常模式，会跑到异常向量表运行。linux在之前已经初始化了异常向量表和异常处理代码，异常向量表在虚拟地址0xffff0000处。异常向量表和处理代码在**arch/arm/kernel/entry-armv.S**中定义。
 
 ```c
 .........................................................................................
@@ -1545,4 +1545,19 @@ static void irq_setup_forced_threading(struct irqaction *new)
 
 
 
-​		
+### 五、中断设置		
+
+```c
+start_kernel	
+	early_irq_init()	 // 预先分配512个desc,同时设置位图，将这些desc插入基数树或者数组 
+	init_IRQ()			//创建注册gic irq_domain ju
+    	gic_init_irq()
+    			of_irq_init()
+    				gic_of_init()
+						gic_init_bases()
+    						irq_domain_add_legacy()
+
+    //重点：在gic_init_bases函数中调用irq_domain_add_legacy之前,修改了需要传给irq_domain_add_legacy的参数,
+   	//详情看代码，主要是将硬件中断号区间[0 gicirqnr]和软件中断号区间[512 512+gicirqnr]对应,通过				//irq_domain_add_legacy提前分配gicirqnr个desc并将硬件中断号和软件中断号的对应关系存在revmap数组中.
+```
+
