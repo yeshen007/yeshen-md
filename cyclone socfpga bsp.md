@@ -387,7 +387,13 @@ ioctl(fd, WDIOC_SETOPTIONS, (unsigned long)&arg)
 #####  简要总结
 
 ```c
+//看门狗用了以下复位操作来停止
+	reset_control_assert(dw_wdt->rst);		
+	reset_control_deassert(dw_wdt->rst);
 
+//使用设置某个寄存器来使能
+    
+//说明复位操作就是关闭，和使能对应
 ```
 
 #### 5.2 tty uart驱动
@@ -1840,15 +1846,19 @@ fatload mmc 01 $fpgadata soc_system.rbf;fpga load 0 $fpgadata $filesize;run brid
 ##### 6.8.2 修改文件
 
 ```c
-main.c
-socfpga_common.h
-socfpga_common.c   	//setenv_ethaddr_eeprom    
-hanglory_config.h
-watchdog.h
-designware_wdt.c
-time.c
-start.S
+/* spl */
+start.S				//定义点灯函数
+spl.c				//调用点灯函数   
+    
+/* uboot */    
+main.c				//增加升级下载功能
+socfpga_common.h	//根据升级下载需要修改环境变量(uboot默认环境变量default_environment)    
+hanglory_config.h	//根据升级下载需要增加的头文件
+watchdog.h			//补充看门狗函数声明
+designware_wdt.c	//增加看门狗函数
+time.c				//增加不复位看门狗的延时函数
+socfpga_common.c   	//setenv_ethaddr_eeprom
+
 cmd_hangloryboot.c	//legacy
 hanglory_spl_spi.c	//legacy
-spl.c
 ```
