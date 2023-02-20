@@ -387,13 +387,14 @@ ioctl(fd, WDIOC_SETOPTIONS, (unsigned long)&arg)
 #####  简要总结
 
 ```c
-//看门狗用了以下复位操作来停止
+//看门狗用了以下复位操作来停止或者关闭,其他设备也差不多
+//使用设置某个寄存器来使能
+//复位操作就是关闭,和使能对应
 	reset_control_assert(dw_wdt->rst);		
 	reset_control_deassert(dw_wdt->rst);
 
-//使用设置某个寄存器来使能
-    
-//说明复位操作就是关闭，和使能对应
+//看门狗驱动思想
+内核看门狗驱动框架要求soc要注册一个watchdog_device结构体,这个结构体中的核心是watchdog_ops,每个soc厂商的watchdog_ops就是对应操作soc看门狗寄存器的函数,除此之外,soc通常会派生一个包含watchdog_device的结构体,比如dw_wdt,之后从操作函数中可以通过contain_of从watchdog_device提取dw_wdt.
 ```
 
 #### 5.2 tty uart驱动
@@ -792,7 +793,10 @@ tty_write
 #####  简要总结
 
 ```c
-
+1. open注册中断,没有中断则定时器模拟,所以会出现读写不及时的问题
+2. read从行规层读取数据返回;如果行规层没有数据则睡眠,在接收中断中通过altera_uart_rx_chars将数据存入行规层然后
+   唤醒阻塞在行规层的进程.
+3. write将数据写入驱动的环形缓冲区,然后通过altera_uart_start_tx触发发送中断,在发送中断中通过            	    altera_uart_tx_chars将环形缓冲区的数据写到寄存器发送出去,最后再关闭发送中断.   
 ```
 
 #### 5.3 网卡驱动
