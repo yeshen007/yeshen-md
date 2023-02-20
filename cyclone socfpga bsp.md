@@ -1383,7 +1383,11 @@ int main()
 #####  简要总结
 
 ```c
-
+//对每个flash注册进mtd
+cqspi_probe
+    cqspi_setup_flash
+    	for_each_available_child_of_node
+    		mtd_device_register
 ```
 
 
