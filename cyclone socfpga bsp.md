@@ -1271,7 +1271,7 @@ dma搬到网卡缓冲区然后硬件自动发送出去，发送出去后触发�
 net_rx_action轮询每cpu队列最终会调用到ch->tx_napi的stmmac_napi_poll_tx  
     
 /* step 6 */  
-stmmac_napi_poll_tx负责清除skb和dma ringbuf内存    
+stmmac_napi_poll_tx负责清除skb和dma ring buf内存    
 ```
 
 #####  简要总结
@@ -1398,7 +1398,12 @@ int main()
 #####  简要总结
 
 ```c
+//msi中断申请
+#define pci_enable_msi(pdev)	pci_enable_msi_block(pdev, 1)
+pci_enable_msi_block(struct pci_dev *dev, unsigned int nvec)
 
+//msix中断申请    
+pci_enable_msix(struct pci_dev *dev, struct msix_entry *entries, int nvec)    
 ```
 
 #### 5.5 MTD驱动
