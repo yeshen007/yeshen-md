@@ -801,6 +801,8 @@ tty_write
 
 #### 5.3 网卡驱动
 
+> 参考文档：[彭伟林phy驱动](https://blog.csdn.net/pwl999/article/details/128339747)
+
 #####  注册
 
 ######  注册mac
@@ -809,26 +811,17 @@ tty_write
 /* socfpga.dtsi */
 gmac0: ethernet@ff700000 {
     compatible = "altr,socfpga-stmmac", "snps,dwmac-3.70a", "snps,dwmac";	//dwmac-socfpga.c
-    altr,sysmgr-syscon = <&sysmgr 0x60 0>;		//
-    reg = <0xff700000 0x2000>;
-    interrupts = <0 115 4>;		//mac对cpu的中断号
-    interrupt-names = "macirq";		//
-    mac-address = [00 00 00 00 00 00];/* Filled in by U-Boot */
-    clocks = <&emac_0_clk>;
-    clock-names = "stmmaceth";
-    snps,multicast-filter-bins = <256>;
-    snps,perfect-filter-entries = <128>;
-    resets = <&rst EMAC0_RESET>;	//保留和删除都没事
-    reset-names = "stmmaceth";		//保留和删除都没事
-    //max-frame-size = <3800>;		//保留和删除都没事,而且好像对ifconfig mtu没影响,都显示1500
-    tx-fifo-depth = <4096>;
-    rx-fifo-depth = <4096>;
-    status = "disabled";
+	...
+    interrupts = <0 115 4>;			//mac对cpu的中断号
+    interrupt-names = "macirq";		//发送,接收,其他状态公用
+	...		
+    max-frame-size = <3800>;		//这个是最大值,要改代码if_ether.h才能改变起来的默认mtu    
+	...
 };
 
 /* socfpga_cyclone5_socdk.dts */
-//如何读取phy addr? 答:使用uboot的mii命令 mii read 0xa 2
-//如何读取phy id? 答:通过uboot命令得到id 0x2000a0f1
+//如何读取phy addr? 答:使用uboot的mii命令 mii read <addr> 2轮询addr直到能读到一个有效值
+//如何读取phy id? 答:通过uboot命令mii read 0xa 2和mii read 0xa 3得到id 0x2000a0f1
 &gmac0 {		//socfpga-dwmac.txt  snps,dwmac.yaml dwmac-socfpga.c
     status = "okay";
     phy-mode = "rgmii";		
@@ -1127,7 +1120,7 @@ static struct mdio_device_id __maybe_unused dp83869_tbl[] = {
 MODULE_DEVICE_TABLE(mdio, dp83869_tbl);
 ```
 
-​		我们项目的phy有另外的驱动注册，不详细分析了，都是些硬件设置的东西。
+​		我们项目的phy有另外的驱动注册，不详细分析了，详情参考彭工文档。
 
 #####  操作
 
@@ -1137,13 +1130,14 @@ MODULE_DEVICE_TABLE(mdio, dp83869_tbl);
 /* ifconfig ethX up */
 ...		//调用路径上网查
 	stmmac_open	
-		stmmac_init_phy(dev);			//创建phylink
+		stmmac_init_phy					//连接phylink和phy_device
+		phylink_start					//启动phylink和phy_device的轮询任务
 		alloc_dma_desc_resources		//申请发送和接收的dma资源
 		init_dma_desc_rings				//dma资源生成ring buffer
 		request_irq(dev->irq, stmmac_interrupt, ...)	//硬件中断处理函数,发送接收共用
 		//启动这些接收和发送队列的napi,没挂入每cpu队列轮询,需要在接收到中断才挂入每cpu队列
-		stmmac_enable_all_queues(priv);	
-		stmmac_start_all_queues(priv);	//允许上层调用hard_start_xmit
+		stmmac_enable_all_queues	
+		stmmac_start_all_queues		//允许上层调用hard_start_xmit
 		
 ```
 
@@ -1283,7 +1277,36 @@ stmmac_napi_poll_tx负责清除skb和dma ringbuf内存
 #####  简要总结
 
 ```c
-
+/*
+ * 注册mac(主要是注册mdio和phy device)
+ */ 
+socfpga_dwmac_probe
+    stmmac_dvr_probe
+    	//设置ndev->name = eth%d,还没完整
+    	//设置ndev->ethtool_ops = &stmmac_ethtool_ops
+    	//设置ndev->netdev_ops = &stmmac_netdev_ops
+        //设置接收中断和发送中断的napi
+    	stmmac_mdio_register
+    		//设置mdiobus的读写函数,即读写phy
+    		of_mdiobus_register
+    			mdiobus_register
+    				//注册mdio总线
+    				//通过mdiobus_scan扫描注册phy_device(如果不屏蔽的话)
+    			//对mdio结点下的子节点如果符合条件则创建注册phy_device(好像会mdiobus_scan部分结果)
+    			//并且在创建phy_device过程中phy_device的轮询任务phy_state_machine
+    	//创建phylink
+    	register_netdev
+    		//eth%d变成ethX
+    		//注册net_device
+    
+/*
+ * 注册phy driver
+ */   
+phy_driver_register
+    new_driver->mdiodrv.driver.probe = phy_probe;	
+	driver_register
+        phy_probe
+        	//读取设置匹配的phy_device的能力
 ```
 
 #### 5.4 pcie驱动
