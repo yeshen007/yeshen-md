@@ -1826,7 +1826,9 @@ all:
 ##### 6.6.5 简要总结
 
 ```c
-
+1.增加一层硬件抽象层ipipe(补丁)和一个实时内核xenomai(源码),这两个和linux最后一起配置编译为一个整体zImage.
+2.通过ipipe截断中断,然后ipipe每个域执行中断,如果前一个域禁止中断则不会传到下一个域,如果抛弃中断则当前域不   执行   且传到下一个域,通常前一个域执行了中断运行了task直到idle才会将中断传到下一个域.对于xenomai没有注册的中断就   不   拦截直接传到linux.
+3.应用程序起来后自动切换为xenomai模式,如果调用了linux服务则切换到linux模式.
 ```
 
 #### 6.7 toolchain
@@ -1898,3 +1900,19 @@ socfpga_common.c   	//setenv_ethaddr_eeprom
 cmd_hangloryboot.c	//legacy
 hanglory_spl_spi.c	//legacy
 ```
+
+#### 6.9 电源管理
+
+> 参考资料：mastering embedded linux programming third edition
+
+```c
+电源和电压时钟两者都有关: P = CfV2. 高的频率需要高的电压, 给定一个电压不能超过某个频率否则不稳定.
+P-states表示cpu频率和电压的组合OPP. P0表示最高频率同时一般也高压的P状态. CPUFreq负责管理cpu P-states的转换.
+C-states表示cpu的睡眠状态.C0表示睡得最浅,耗电最高但同时唤醒最快的状态.CPUIdle负责管理cpu睡眠C-states的选择.
+S-states表示整个系统的睡眠状态. linux支持四种freeze(S0), standby(S1), mem(S3), disk(S4).    
+
+1.cpu：运行时根据CPUFreq中的governor自动选择切换P状态. 睡眠时根据CPUIdle中的governor自动选择睡眠状态S. 通过动        态时钟模式CONFIG_NO_HZ在进入idle线程时关闭周期时钟, 直到一个普通或定时器中断唤醒再开周期时钟. 在定时器处        理最后查看下一个注册的动态定时器的到期时间来设置下一个定时器中断, 如果没有动态定时器了则不设置定时器中断.
+2.外设：通过Runtime pm调用外设驱动的shutdown或者suspend函数关闭或暂停不工作的外设的时钟.通过resume函数恢复            外设工作.
+3.整个系统：通过system sleep将整个系统切换到S-states之一,通过唤醒源唤醒.
+```
+
