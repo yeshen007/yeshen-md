@@ -1911,8 +1911,10 @@ P-states表示cpu频率和电压的组合OPP. P0表示最高频率同时一般�
 C-states表示cpu的睡眠状态.C0表示睡得最浅,耗电最高但同时唤醒最快的状态.CPUIdle负责管理cpu睡眠C-states的选择.
 S-states表示整个系统的睡眠状态. linux支持四种freeze(S0), standby(S1), mem(S3), disk(S4).    
 
-1.cpu：运行时根据CPUFreq中的governor自动选择切换P状态. 睡眠时根据CPUIdle中的governor自动选择睡眠状态S. 通过动        态时钟模式CONFIG_NO_HZ在进入idle线程时关闭周期时钟, 直到一个普通或定时器中断唤醒再开周期时钟. 在定时器处        理最后查看下一个注册的动态定时器的到期时间来设置下一个定时器中断, 如果没有动态定时器了则不设置定时器中断.
-2.外设：通过Runtime pm调用外设驱动的shutdown或者suspend函数关闭或暂停不工作的外设的时钟.通过resume函数恢复            外设工作.
+1.cpu：运行时根据CPUFreq中的governor自动选择切换P状态. 睡眠时根据CPUIdle中的governor自动选择睡眠状态S. 通过动态时钟模式CONFIG_NO_HZ在进入idle线程时关闭周期时钟, 直到一个普通或定时器中断唤醒再开周期时钟. 在定时器处理最后查看下一个注册的动态定时器的到期时间来设置下一个定时器中断, 如果没有动态定时器了则不设置定时器中断.
+    
+2.外设：通过Runtime pm调用外设驱动的shutdown或者suspend函数关闭或暂停不工作的外设的时钟.通过resume函数恢复外设工作.
+    
 3.整个系统：通过system sleep将整个系统切换到S-states之一,通过唤醒源唤醒.
 ```
 
