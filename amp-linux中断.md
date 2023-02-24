@@ -1550,7 +1550,7 @@ static void irq_setup_forced_threading(struct irqaction *new)
 ```c
 start_kernel	
 	early_irq_init()	 // 预先分配512个desc,同时设置位图，将这些desc插入基数树或者数组 
-	init_IRQ()			//创建注册gic irq_domain ju
+	init_IRQ()			//创建注册gic irq_domain 
     	gic_init_irq()
     			of_irq_init()
     				gic_of_init()
