@@ -48,6 +48,24 @@ passwd: Yezheng@123
 
 #### 2. 代码编译
 
+```c
+/* 配置环境变量 */
+source  /opt/arm.env
+
+/* 配置编译内核 */
+cd /home/zye/kernel
+make ARCH=arm64 CROSS_COMPILE=aarch64-none-linux-gnu- bass_linux_mini_defconfig
+make ARCH=arm64 CROSS_COMPILE=aarch64-none-linux-gnu- menuconfig
+make ARCH=arm64 CROSS_COMPILE=aarch64-none-linux-gnu- -j16
+make ARCH=arm64 CROSS_COMPILE=aarch64-none-linux-gnu- distclean
+
+/* 编译spacc驱动模块和测试应用 */
+首先编译内核
+cd /home/zye/spacc
+make -j16
+make clean
+```
+
 
 
 #### 3. 仿真运行
