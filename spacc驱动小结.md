@@ -8,16 +8,128 @@
 
 #### 1.1 概括
 
-&emsp;&emsp;设备节点方式是通过应用程序打开设备节点，然后通过ioctl设置密钥和其他相关参数，最后启动作业。这是spacc驱动包提供的方式，spacc驱动包主要包含以下几个内核模块：
+&emsp;&emsp;设备节点方式是通过应用程序打开设备节点，然后通过ioctl设置密钥和其他相关参数，最后启动作业。**这是spacc sdk提供的方式**，spacc sdk驱动主要包含以下几个内核模块：
 
 - **elppdu.ko** ：由pdu.c和一些辅助代码编译得到，它给其他驱动模块提供了内存、DMA的分配和操作，资源锁定释放等通用的api。这些api通常是linux内核其他函数的包装，如pdu_io_write32是对writel的包装，PDU_LOCK宏扩展就是spin_lock_irqsave。
 - **elpmem.ko** ：由spacc_mem.c编译得到，是一个平台设备驱动模块，它主要做的首先是创建平台设备，根据在Makefile中配置的PDU_BASE_ADDR和PDU_BASE_IRQ生成资源，读取sapcc硬件寄存器填入pdu_info结构中，将资源和pdu_info添加平台设备并将平台设备注册到平台设备总线。
 - **elspacc.ko** ：由spacc.c和其他辅助代码编译得到，封装和提供了对加密硬件的底层操作，比如作业的管理，中断的管理，密钥上下文的设置等。elspacc.ko 注册的平台驱动会和elpmem.ko匹配，然后提取出平台设备的资源和pdu_info，根据这些数据和对硬件相应的读取设置操作初始化一个spacc_device结构体，该结构体包含除了根据作业需要临时传入设置参数之外的所有的信息。
 - **elspaccusr.ko** ：由spacc_dev.c编译得到，它注册了一个字符设备*/dev/spaccusr*，应用层可以打开操作这个设备节点进行加解密作业，主要是通过调用ioctl并通过传入适当的参数来设置和启动加解密操作。该字符设备的ioctl驱动接口使用elspacc.ko中的函数进行设置和作业。
 
-&emsp;&emsp;**实现者**实现和提供算法，**使用者**使用算法进行作业处理，实现者主要关注**注册流程**，使用者主要关注**作业调用流程**，如下文所述。
+&emsp;&emsp;**算法实现者**实现和提供算法，**算法使用者**使用算法进行作业处理，算法实现者主要关注**注册流程**，算法使用者主要关注**作业调用流程**，如下文所述。
 
 #### 1.2 注册流程
+
+&emsp;&emsp;上面的几个驱动模块的加载顺序是elppdu.ko，elpmem.ko，elspacc.ko，elpspaccusr.ko。  
+&emsp;&emsp;**elppdu.ko**没有注册任何设备或者驱动，只提供通用api。  
+&emsp;&emsp;**elpmem.ko**注册了一个平台设备，如下面简化后的代码所示：
+
+```c
+static int __init pdu_vex_mod_init(void)
+{
+    int irq_num = get_irq_num(PDU_BASE_IRQ);	//映射物理irq PDU_BASE_IRQ为虚拟irq irq_num
+	pdu_info info;
+    
+    //res[0]是spacc物理基地址, res[1]是spacc虚拟irq
+    struct resource res[2];	
+    res[0] = (struct resource) {
+        .start = PDU_BASE_ADDR,	
+        .end   = PDU_BASE_ADDR,
+        .flags = IORESOURCE_MEM,
+    };
+    res[1] = (struct resource) {
+        .start = irq_num,
+        .end   = irq_num,
+        .flags = IORESOURCE_IRQ,
+    };
+
+    //读取spacc硬件配置信息到info
+    spdu_init(PDU_BASE_ADDR, &info);	
+
+    //注册平台设备,并记录在spacc驱动管理的devices[]数组中
+    register_device("spacc", info.spacc_version.project << 16, res, 2, &info);
+}
+```
+
+&emsp;&emsp;如1.1小节所说，这里根据sapcc的物理地址和映射后得到的linux irq号生成两个struct resource，同时读取spacc硬件配置信息到pdu_info结构中，然后通过register_device创建平台设备并注册，register_device简化后代码如下，意思很明了不再细说。
+
+```c
+static struct platform_device *devices[MAX_DEV];
+static int dev_id;
+
+static void register_device(const char *name, int id,
+                            const struct resource *res, unsigned num,
+                            pdu_info *info)
+{
+    struct platform_device_info pdevinfo = {
+        .name = name,		//.name = "spacc"
+        .id = id,			//.id = project号码
+        .res = res,			//.res = spacc物理基地址和spacc虚拟irq
+        .num_res = num,		//.num_res = 2
+        .data = info,		//.data = pdu_info
+        .size_data = sizeof *info,
+    };
+
+	//注册进平台总线并记录在devices[]中
+    devices[dev_id] = platform_device_register_full(&pdevinfo);	
+
+    dev_id++;	
+}
+```
+
+&emsp;&emsp;**elspacc.ko**注册了一个平台驱动，如下面简化后代码所示：
+
+```c
+static struct platform_driver spacc_driver = {
+    .probe  = spacc_probe,
+    .driver = {
+        .name  = "spacc",		//和上文注册的平台设备名字一样，匹配成功调用spacc_probe
+        .owner = THIS_MODULE
+    },
+};
+
+static int __init spacc_mod_init (void)
+{
+    platform_driver_register(&spacc_driver);
+}
+```
+
+&emsp;&emsp;注册的平台驱动名字和上文注册的平台设备名字一样，匹配成功调用spacc_probe，该函数简化后代码如下：
+
+```c
+static int __devinit spacc_probe(struct platform_device *pdev)
+{
+    void *baseaddr;
+    struct resource *mem, *irq;
+    struct spacc_priv *priv;
+    pdu_info info;
+
+    mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);	//物理基地址
+    irq = platform_get_resource(pdev, IORESOURCE_IRQ, 0);	//虚拟irq
+    priv = devm_kzalloc(&pdev->dev, sizeof *priv, GFP_KERNEL);
+    baseaddr = pdu_linux_map_regs(&pdev->dev, mem);	//物理基地址映射为虚拟地址
+    pdu_get_version(baseaddr, &info);	//读取硬件配置信息填入info
+
+    //初始化spacc_device结构体, 包括作业数组和上下文数组
+    spacc_init(baseaddr, &priv->spacc, &info);
+    //tasklet函数设置为spacc_pop_jobs
+    tasklet_init(&priv->pop_jobs, spacc_pop_jobs, (unsigned long)priv);	
+    spacc_irq_glbl_disable (&priv->spacc);	//关闭全局irq
+    platform_set_drvdata(pdev, priv);		//设置pdev->dev->driver_data = priv;
+    priv->max_msg_len = priv->spacc.config.max_msg_size;
+
+    //注册irq处理函数spacc_irq_handler
+    devm_request_irq(&pdev->dev, irq->start, spacc_irq_handler, IRQF_SHARED, 
+                     dev_name(&pdev->dev), &pdev->dev)
+
+    priv->spacc.irq_cb_stat = spacc_stat_process;		//设置中断回调函数
+    priv->spacc.irq_cb_cmdx = spacc_cmd_process;		//设置中断回调函数
+
+    spacc_irq_stat_enable (&priv->spacc, 1);	//设置stat_cnt为1同时使能stat fifo irq
+    spacc_irq_cmdx_enable(&priv->spacc, 0, 1);	//设置cmd0_cnt为1同时使能cmd0 fifl irq
+    spacc_irq_stat_wd_disable (&priv->spacc);	//默认关闭stat wd irq
+    spacc_irq_glbl_enable (&priv->spacc);		//使能全局irq
+}
+```
 
 
 
@@ -54,7 +166,7 @@ spacc_dev_close
 			spacc_close
 ```
 
-&emsp;&emsp;以上是启动一个简要作业的流程，其中第一级和第二级缩进属于应用层函数，第三级和第四级属于内核层函数。第一级spacc_dev_xx函数是对第二级直接操作设备节点的一层封装，方便用户的使用。无论是使用spacc_dev_xx还是直接操作设备节点最终都要落实到下面的内核调用流程上。
+&emsp;&emsp;以上是启动一个作业的通用流程，无论是哪种算法这个流程通用，其差别在于传入设置的参数不同。其中第一级和第二级缩进属于应用层函数，第三级和第四级属于内核层函数。第一级spacc_dev_xx函数是对第二级直接操作设备节点的一层封装，方便用户的使用。无论是使用spacc_dev_xx还是直接操作设备节点最终都要落实到下面的内核调用流程上。
 
 ```c
 //设置加解密模式(如AES_CBC),申请一个作业并关联一个上下文和设置回调函数
@@ -93,7 +205,7 @@ spacc_close
 
 #### 2.1 概括
 
-&emsp;&emsp;crypto api方式是通过应用层打开操作一个套接字来间接调用下面框图中的通用内核api进行加解密作业。linux crypto框架比较复杂，这里只关注如何注册和使用加密算法。下面框图是注册和使用加密算法的主要数据结构和函数：
+&emsp;&emsp;crypto api方式是通过应用层打开操作一个套接字来间接调用下面框图中的通用内核api进行加解密作业，**目前spacc sdk还没有实现这种方式**。linux crypto框架比较复杂，这里只关注如何注册和使用加密算法。下面框图是注册和使用加密算法的主要数据结构和函数：
 
 ```c
 /* 
@@ -127,7 +239,7 @@ struct crypto_cipher	//单块对称加密算法对象,包含struct crypto_tfm
 int crypto_register_alg(struct crypto_alg* alg)	
 void crypto_unregister_alg(struct crypto_alg* alg)
 
-//使用单块对称加密的主要算法流程api
+//单块对称加密使用api
 struct crypto_cipher* crypto_alloc_cipher(const char* alg_name, u32 type, u32 mask)
 void crypto_free_cipher(struct crypto_cipher* tfm)
 int crypto_has_cipher(const char* alg_name, u32 type, u32 mask)
@@ -147,7 +259,7 @@ struct skcipher_request   //多块对称加密请求,包含struct crypto_async_r
 int crypto_register_skcipher(struct skcipher_alg* alg)		//调用crypto_register_alg
 void crypto_unregister_skcipher(struct skcipher_alg* alg)	//调用crypto_unregister_alg
     
-//使用多块对称加密的主要算法流程api     
+//多块对称加密使用api     
 struct crypto_skcipher* crypto_alloc_skcipher(const char* alg_name, u32 type, u32 mask)
 void crypto_free_skcipher(struct crypto_skcipher* tfm)
 int crypto_has_skcipher(const char* alg_name, u32 type, u32 mask)  
@@ -168,7 +280,7 @@ void skcipher_request_set_crypt(struct skcipher_request* req, struct scatterlist
     
     
 /* 
- * hash(包括裸hash和hmac模式hash)
+ * hash(包括裸hash和hmac模式hash)相关数据结构和函数 
  */   
 struct hash_alg_common	 //通用hash算法实现,包含struct crypto_alg
 struct ahash_alg		//异步hash算法实现,包含struct hash_alg_common 
@@ -184,7 +296,7 @@ int crypto_register_shash(struct shash_alg* alg)	//异步hash注册,调用crypto
 void crypto_unregister_ahash(struct ahash_alg* alg)	//同步hash注销,调用crypto_register_alg    
 void crypto_unregister_shash(struct shash_alg* alg) //异步hash注销,调用crypto_register_alg
 
-//使用异步hash的主要算法流程api      
+//异步hash使用api      
 struct crypto_ahash* crypto_alloc_ahash(const char* alg_name, u32 type, u32 mask)
 void crypto_free_ahash(struct crypto_ahash* tfm)
 unsigned int crypto_ahash_digestsize(struct crypto_ahash* tfm)
@@ -206,7 +318,7 @@ void ahash_request_set_callback(struct ahash_request* req, u32 flags,
 void ahash_request_set_crypt(struct ahash_request* req, struct scatterlist* src, 
                              u8* result, unsigned int nbytes)  
     
-//使用同步hash的主要算法流程api  
+//同步hash使用api  
 struct crypto_shash* crypto_alloc_shash(const char* alg_name, u32 type, u32 mask)
 void crypto_free_shash(struct crypto_shash* tfm)
 unsigned int crypto_shash_blocksize(struct crypto_shash* tfm)    
@@ -222,7 +334,7 @@ int crypto_shash_final(struct shash_desc* desc, u8* out)
 int crypto_shash_finup(struct shash_desc* desc, const u8* data, unsigned int len, u8* out)
     
 /*
- * aead(认证加密)
+ * aead(认证加密)相关数据结构和函数 
  */ 
 struct aead_alg		//认证加密算法实现,包含struct crypto_alg
 struct crypto_aead	//认证加密算法对象,包含struct crypto_tfm
@@ -232,7 +344,7 @@ struct aead_request	//认证加密请求,包含struct crypto_async_request
 int crypto_register_aead(struct aead_alg* alg)		//调用crypto_register_alg
 void crypto_unregister_aead(struct aead_alg* alg)    //调用crypto_unregister_alg
     
-//使用认证加密的主要算法流程api 
+//认证加密使用api 
 struct crypto_aead* crypto_alloc_aead(const char* alg_name, u32 type, u32 mask)   
 void crypto_free_aead(struct crypto_aead* tfm) 
 unsigned int crypto_aead_ivsize(struct crypto_aead* tfm) 
@@ -254,12 +366,9 @@ void aead_request_set_ad(struct aead_request* req, unsigned int assoclen)
 ```
 
 &emsp;&emsp;首先关注三个通用的基础数据结构`struct crypto_alg`，`struct crypto_tfm`和`struct crypto_async_request`。`struct crypto_alg`表示一个**算法实现**，一个算法实现可以有多个使用者，每个使用者都有自己的**算法对象**`struct crypto_tfm`，而每个使用者都可以使用多个**请求**`struct crypto_async_request`进行作业处理。因此一个`struct crypto_alg`对应多个`struct crypto_tfm`，而一个`struct crypto_tfm`对应多个`struct crypto_async_request`。  
-&emsp;&emsp;然后是通用的算法实现注册函数`crypto_register_alg`和算法对象申请函数`crypto_alloc_base`。算法实现者填充`struct crypto_alg`然后通过`crypto_register_alg`将算法实现注册到内核crypto框架中。算法使用者通过`crypto_alloc_base`获取算法对象，然后基于该算法对象通过对应的算法流程api进行作业。  
-&emsp;&emsp;这几个通用的数据结构和函数是特定算法类型的基类，通常不直接使用。比如多块对称加密使用的算法实现是包含`struct crypto_alg`的`struct skcipher_alg`，算法对象是包含`struct crypto_tfm`的`struct crypto_skcipher`，请求是包含`struct crypto_async_request`的`struct skcipher_request`，算法实现注册函数是包含`crypto_register_alg`的`crypto_register_skcipher`，算法对象申请函数是包含`crypto_alloc_base`的`crypto_alloc_skcipher`。
-
-
-
-
+&emsp;&emsp;然后是通用的算法实现注册函数`crypto_register_alg`和算法对象申请函数`crypto_alloc_base`。算法实现者填充`struct crypto_alg`然后通过`crypto_register_alg`将算法实现注册到内核crypto框架中。算法使用者通过`crypto_alloc_base`获取算法对象，然后基于该算法对象通过对应的算法使用api进行作业。  
+&emsp;&emsp;这几个通用的数据结构和函数是特定算法类型的基类，通常不直接使用。比如多块对称加密使用的算法实现是包含`struct crypto_alg`的`struct skcipher_alg`，算法对象是包含`struct crypto_tfm`的`struct crypto_skcipher`，请求是包含`struct crypto_async_request`的`struct skcipher_request`，算法实现注册函数是包含`crypto_register_alg`的`crypto_register_skcipher`，算法对象申请函数是包含`crypto_alloc_base`的`crypto_alloc_skcipher`。  
+&emsp;&emsp;在上面框图中，除了通用的数据结构和函数还列举了几种典型的算法类型的数据结构和函数，它们都是对通用数据结构和函数的包装。这几种类型分别为**单块对称加密**(single-block symmetric key cipher)，**多块对称加密**(muti-block symmetric key cipher)，**哈希**(hash)，**认证加密**(aead)。在这里我们只讨论这几种模式，因为这几种是spacc支持的且常用的。其中单块对称加密是同步的，多块对称加密和认证加密是异步的，而哈希具有同步和异步两种模式。接下来以多块对称加密来讲解注册流程和作业调用流程，其他模式差不多，有些许区别，自行查看相关代码和文档。
 
 #### 2.2 注册流程
 
