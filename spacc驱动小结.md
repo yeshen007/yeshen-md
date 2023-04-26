@@ -1,4 +1,4 @@
-## <center>spacc驱动小结</center>
+<center>spacc驱动小结</center>
 
 [TOC]
 
@@ -126,7 +126,7 @@ static int __devinit spacc_probe(struct platform_device *pdev)
 
     //注册irq处理函数spacc_irq_handler
     devm_request_irq(&pdev->dev, irq->start, spacc_irq_handler, IRQF_SHARED, 
-                     dev_name(&pdev->dev), &pdev->dev)
+                     dev_name(&pdev->dev), &pdev->dev);
 
     //设置中断回调函数
     priv->spacc.irq_cb_stat = spacc_stat_process;		
@@ -399,9 +399,9 @@ void aead_request_set_crypt(struct aead_request* req, struct scatterlist* src,
 void aead_request_set_ad(struct aead_request* req, unsigned int assoclen)    
 ```
 
-&emsp;&emsp;首先关注三个通用的基础数据结构`struct crypto_alg`，`struct crypto_tfm`和`struct crypto_async_request`。`struct crypto_alg`表示一个**算法实现**，一个算法实现可以有多个使用者，每个使用者都有自己的**算法对象**`struct crypto_tfm`，而每个使用者都可以使用多个**请求**`struct crypto_async_request`进行作业处理。因此一个`struct crypto_alg`对应多个`struct crypto_tfm`，而一个`struct crypto_tfm`对应多个`struct crypto_async_request`。  
-&emsp;&emsp;然后是通用的算法实现注册函数`crypto_register_alg`和算法对象申请函数`crypto_alloc_base`。算法实现者填充`struct crypto_alg`然后通过`crypto_register_alg`将算法实现注册到内核crypto框架中。算法使用者通过`crypto_alloc_base`获取算法对象，然后基于该算法对象通过对应的算法使用api进行作业。  
-&emsp;&emsp;这几个通用的数据结构和函数是特定算法类型的基类，通常不直接使用。比如多块对称加密使用的算法实现是包含`struct crypto_alg`的`struct skcipher_alg`，算法对象是包含`struct crypto_tfm`的`struct crypto_skcipher`，请求是包含`struct crypto_async_request`的`struct skcipher_request`，算法实现注册函数是包含`crypto_register_alg`的`crypto_register_skcipher`，算法对象申请函数是包含`crypto_alloc_base`的`crypto_alloc_skcipher`。  
+&emsp;&emsp;首先关注三个通用的基础数据结构struct crypto_alg，struct crypto_tfm和struct crypto_async_request。struct crypto_alg表示一个**算法实现**，一个算法实现可以有多个使用者，每个使用者都有自己的**算法对象**struct crypto_tfm，而每个使用者都可以使用多个**请求**struct crypto_async_request进行作业处理。因此一个struct crypto_alg可以对应多个struct crypto_tfm，而一个struct crypto_tfm还对应可以多个struct crypto_async_request。  
+&emsp;&emsp;然后是通用的算法实现注册函数crypto_register_alg和算法对象申请函数crypto_alloc_base。算法实现者填充struct crypto_alg然后通过crypto_register_alg将算法实现注册到内核crypto框架中。算法使用者通过crypto_alloc_base获取算法对象，然后基于该算法对象通过对应的算法使用api进行作业。  
+&emsp;&emsp;这几个通用的数据结构和函数是特定算法类型的基类，通常不直接使用。比如多块对称加密使用的算法实现是包含struct crypto_alg的struct skcipher_alg，算法对象是包含struct crypto_tfm的struct crypto_skcipher，请求是包含struct crypto_async_request的struct skcipher_request，算法实现注册函数是包含crypto_register_alg的crypto_register_skcipher，算法对象申请函数是包含crypto_alloc_base的crypto_alloc_skcipher。  
 &emsp;&emsp;在上面框图中，除了通用的数据结构和函数还列举了几种典型的算法类型的数据结构和函数，它们都是对通用数据结构和函数的包装。这几种类型分别为**单块对称加密**(single-block symmetric key cipher)，**多块对称加密**(muti-block symmetric key cipher)，**哈希**(hash)，**认证加密**(aead)。在这里我们只讨论这几种模式，因为这几种是spacc支持的且常用的。其中单块对称加密是同步的，多块对称加密和认证加密是异步的，而哈希具有同步和异步两种模式。接下来以多块对称加密来讲解注册流程和作业调用流程，其他模式差不多，有些许区别，自行查看相关代码和文档。
 
 #### 2.2 注册流程
@@ -500,7 +500,8 @@ struct skcipher_alg {
     //将密钥设置到硬件或者软件上下文中
     int (*setkey)(struct crypto_skcipher *tfm, const u8 *key, unsigned int keylen);	
         
-    //将请求skcipher_request中的src的数据加密到dst中，其中iv和加密的数据大小也在请求中指定    
+    //将请求skcipher_request中的src的数据加密到dst中，其中iv和加密的数据大小也在请求中指定
+    //关于请求的信息参考下面struct skcipher_request结构
     int (*encrypt)(struct skcipher_request *req);
         
     //将请求skcipher_request中的src的数据解密到dst中，其中iv和解密的数据大小也在请求中指定    
@@ -512,6 +513,15 @@ struct skcipher_alg {
     //的init初始化crypto_skcipher
     int (*init)(struct crypto_skcipher *tfm);					
 }; 
+
+struct skcipher_request {
+	unsigned int cryptlen;		//该请求需要处理的数据大小
+	u8 *iv;					   //初始化向量	
+	struct scatterlist *src;    //数据源地址
+	struct scatterlist *dst;    //数据目的地址
+	struct crypto_async_request base;
+	void *__ctx[] CRYPTO_MINALIGN_ATTR;
+};
 ```
 
 &emsp;&emsp;通过对skcipher_alg中的这些成员的通用含义的理解再结合对自己的加密硬件的掌握和参考别的加密硬件的实现最终可以将自己的加密硬件注册到内核crypto框架给用户使用。
@@ -528,4 +538,74 @@ struct sockaddr_alg sa = {
 };
 ```
 
-&emsp;&emsp;关于应用层如何通过套接字设置参数启动作业可以自行参考网上资料，这里讲解内核层算法使用api的调用流程，因为无论应用层软件是什么形式（比如自己操作设置sockaddr_alg套接字或者使用openssl开源软件）最终都要落实到正确的内核算法使用api的调用流程上。
+&emsp;&emsp;关于应用层如何通过套接字设置参数启动作业可以自行参考网上资料，这里讲解内核层算法使用api的调用流程，因为无论应用层软件是什么形式（比如自己操作设置sockaddr_alg套接字或者使用openssl开源软件）最终都要落实到正确的内核算法使用api的调用流程上。我们通过以下一个示例来展示对称加解密的调用流程模板。
+
+```c
+//封装结构
+struct skcipher_def {
+    struct scatterlist sg;
+    struct crypto_skcipher *tfm;
+    struct skcipher_request *req;
+    struct crypto_wait wait;
+};
+
+//启动加密然后等待请求完成 
+static unsigned int test_skcipher_encdec(struct skcipher_def *sk, int enc)
+{
+    if (enc)	//加密
+        //首先调用crypto_skcipher_encrypt启动异步加密请求处理，最终会调用
+        //算法实现skcipher_alg的encrypt函数，它通常是将请求放入一个队列就返回，
+        //然后调用wait_for_completion睡眠直到请求完成调用回调函数crypto_req_done唤醒
+        crypto_wait_req(crypto_skcipher_encrypt(sk->req), &sk->wait);
+    else		//解密
+        crypto_wait_req(crypto_skcipher_decrypt(sk->req), &sk->wait);
+}
+
+//初始化和启动加密操作
+static int test_skcipher(void)
+{
+    struct skcipher_def sk;
+    struct crypto_skcipher *skcipher = NULL;
+    struct skcipher_request *req = NULL;
+    char *scratchpad = NULL;
+    char *ivdata = NULL;
+    unsigned char key[32];
+
+    //申请一个对称加密算法对象
+    skcipher = crypto_alloc_skcipher("cbc-aes-aesni", 0, 0);
+
+    //申请一个对称加密请求
+    req = skcipher_request_alloc(skcipher, GFP_KERNEL);
+
+	//设置请求回调函数crypto_req_done和相关数据
+    skcipher_request_set_callback(req, CRYPTO_TFM_REQ_MAY_BACKLOG,
+                      crypto_req_done,
+                      &sk.wait);
+
+    get_random_bytes(&key, 32);		//随机256位密钥
+    
+    //调用skcipher的算法实现的setkey函数将密钥设置到硬件或软件数据结构中
+    crypto_skcipher_setkey(skcipher, key, 32);
+
+    ivdata = kmalloc(16, GFP_KERNEL);
+    get_random_bytes(ivdata, 16);	//随机的16字节(单块加密的数据大小)初始化向量
+
+    scratchpad = kmalloc(16, GFP_KERNEL);
+    get_random_bytes(scratchpad, 16);	//随机的16字节待加密的数据
+
+    sk.tfm = skcipher;
+    sk.req = req;
+
+    sg_init_one(&sk.sg, scratchpad, 16);	//将加密数据buf设置到scatterlist
+    
+    //将数据源地址，目的地址，iv，和需要加密的长度设置到请求中
+    skcipher_request_set_crypt(req, &sk.sg, &sk.sg, 16, ivdata);
+    
+    crypto_init_wait(&sk.wait);		//初始化completion
+
+    //启动加密然后等待请求完成 
+    test_skcipher_encdec(&sk, 1);
+}
+```
+
+&emsp;&emsp;调用流程上面的代码注释已经写的很清晰，可以在内核模块测试代码中直接调用test_skcipher发起初始化和启动加密作业。在test_skcipher中首先通过crypto_alloc_skcipher申请算法对象；然后通过skcipher_request_alloc对该算法对象申请一个请求；然后通过skcipher_request_set_callback设置请求回调函数；然后通过crypto_skcipher_setkey将密钥设置到硬件中；然后通过skcipher_request_set_crypt将数据源地址和目的地址，iv和加密数据长度设置到请求中；然后通过test_skcipher_encdec中调用的crypto_skcipher_encrypt启动异步作业请求处理，最终会调用到skcipher_alg的硬件实现的encrypt，通常是将请求放入某个队列然后返回；然后通过crypto_wait_req中调用的wait_for_completion睡眠等待请求完成，最后请求完成后自动调用回调函数crypto_req_done接着调用complete唤醒该加密任务进程。
