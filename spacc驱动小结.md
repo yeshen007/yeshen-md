@@ -12,10 +12,10 @@
 
 - **elppdu.ko** ：由pdu.c和一些辅助代码编译得到，它给其他驱动模块提供了内存、DMA的分配和操作，资源锁定释放等通用的api。这些api通常是linux内核其他函数的包装，如pdu_io_write32是对writel的包装，PDU_LOCK宏扩展就是spin_lock_irqsave。
 - **elpmem.ko** ：由spacc_mem.c编译得到，是一个平台设备驱动模块，它主要做的首先是创建平台设备，根据在Makefile中配置的PDU_BASE_ADDR和PDU_BASE_IRQ生成资源，读取sapcc硬件寄存器填入pdu_info结构中，将资源和pdu_info添加平台设备并将平台设备注册到平台设备总线。
-- **elspacc.ko** ：由spacc.c和其他辅助代码编译得到，封装和提供了对加密硬件的底层操作，比如作业的管理，中断的管理，密钥上下文的设置等。elspacc.ko 注册的平台驱动会和elpmem.ko匹配，然后提取出平台设备的资源和pdu_info，根据这些数据和对硬件相应的读取设置操作初始化一个spacc_device结构体，该结构体包含除了根据作业需要临时传入设置参数之外的所有的信息。
+- **elspacc.ko** ：由spacc.c和其他辅助代码编译得到，封装和提供了对加密硬件的底层操作，比如作业的管理，中断的管理，密钥上下文的设置等。elspacc.ko 注册的平台驱动会和elpmem.ko匹配，然后提取出平台设备的资源和pdu_info，根据这些数据和对硬件相应的读取设置操作初始化一个spacc_device结构体，该结构体包含除了根据作业需要临时传入设置参数之外的所有需要的数据。
 - **elspaccusr.ko** ：由spacc_dev.c编译得到，它注册了一个字符设备*/dev/spaccusr*，应用层可以打开操作这个设备节点进行加解密作业，主要是通过调用ioctl并通过传入适当的参数来设置和启动加解密操作。该字符设备的ioctl驱动接口使用elspacc.ko中的函数进行设置和作业。
 
-&emsp;&emsp;**算法实现者**实现和提供算法，**算法使用者**使用算法进行作业处理，算法实现者主要关注**注册流程**，算法使用者主要关注**作业调用流程**，如下文所述。
+&emsp;&emsp;**算法实现者**实现和提供算法，**算法使用者**使用算法进行作业处理。算法使用者主要关注**作业调用流程**，算法实现者既要关注**注册流程**也要关注作业调用流程。
 
 #### 1.2 注册流程
 
@@ -48,6 +48,8 @@ static int __init pdu_vex_mod_init(void)
     //注册平台设备,并记录在spacc驱动管理的devices[]数组中
     register_device("spacc", info.spacc_version.project << 16, res, 2, &info);
 }
+
+module_init(pdu_vex_mod_init);
 ```
 
 &emsp;&emsp;如1.1小节所说，这里根据sapcc的物理地址和映射后得到的linux irq号生成两个struct resource，同时读取spacc硬件配置信息到pdu_info结构中，然后通过register_device创建平台设备并注册，register_device简化后代码如下，意思很明了不再细说。
@@ -91,6 +93,8 @@ static int __init spacc_mod_init (void)
 {
     platform_driver_register(&spacc_driver);
 }
+
+module_init (spacc_mod_init);
 ```
 
 &emsp;&emsp;注册的平台驱动名字和上文注册的平台设备名字一样，匹配成功调用spacc_probe，该函数简化后代码如下：
@@ -103,14 +107,17 @@ static int __devinit spacc_probe(struct platform_device *pdev)
     struct spacc_priv *priv;
     pdu_info info;
 
-    mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);	//物理基地址
-    irq = platform_get_resource(pdev, IORESOURCE_IRQ, 0);	//虚拟irq
+    //获取平台设备的spacc物理基地址和虚拟irq
+    mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);	
+    irq = platform_get_resource(pdev, IORESOURCE_IRQ, 0);	
+    
     priv = devm_kzalloc(&pdev->dev, sizeof *priv, GFP_KERNEL);
     baseaddr = pdu_linux_map_regs(&pdev->dev, mem);	//物理基地址映射为虚拟地址
-    pdu_get_version(baseaddr, &info);	//读取硬件配置信息填入info
+    pdu_get_version(baseaddr, &info);				//读取硬件配置信息填入info
 
     //初始化spacc_device结构体, 包括作业数组和上下文数组
     spacc_init(baseaddr, &priv->spacc, &info);
+    
     //tasklet函数设置为spacc_pop_jobs
     tasklet_init(&priv->pop_jobs, spacc_pop_jobs, (unsigned long)priv);	
     spacc_irq_glbl_disable (&priv->spacc);	//关闭全局irq
@@ -121,17 +128,44 @@ static int __devinit spacc_probe(struct platform_device *pdev)
     devm_request_irq(&pdev->dev, irq->start, spacc_irq_handler, IRQF_SHARED, 
                      dev_name(&pdev->dev), &pdev->dev)
 
-    priv->spacc.irq_cb_stat = spacc_stat_process;		//设置中断回调函数
-    priv->spacc.irq_cb_cmdx = spacc_cmd_process;		//设置中断回调函数
+    //设置中断回调函数
+    priv->spacc.irq_cb_stat = spacc_stat_process;		
+    priv->spacc.irq_cb_cmdx = spacc_cmd_process;		
 
-    spacc_irq_stat_enable (&priv->spacc, 1);	//设置stat_cnt为1同时使能stat fifo irq
-    spacc_irq_cmdx_enable(&priv->spacc, 0, 1);	//设置cmd0_cnt为1同时使能cmd0 fifl irq
-    spacc_irq_stat_wd_disable (&priv->spacc);	//默认关闭stat wd irq
+    //设置两个fifo初始阈值并使能它们
+    spacc_irq_stat_enable (&priv->spacc, 1);	
+    spacc_irq_cmdx_enable(&priv->spacc, 0, 1);	
+    
     spacc_irq_glbl_enable (&priv->spacc);		//使能全局irq
 }
 ```
 
+&emsp;&emsp;spacc_probe首先做的是从elpmem.ko注册的平台设备提取spacc寄存器物理基地址和linux irq号。然后对物理地址映射后重新读取spacc寄存器得到各种数据填充pdu_info，再通过spacc_init初始化一个spacc_device结构体，该结构体包含了启动作业临时传入的参数之外的所有需要的数据，包括硬件的状态信息和软件管理的数据如作业管理和上下文管理数组。最后是中断相关的设置，包括注册irq处理函数spacc_irq_handler，设置tasklet函数spacc_pop_jobs，设置stat和cmd fifo中断回调函数和初始fifo阈值，最后使能中断。  
+&emsp;&emsp;stat和cmd fifo是spacc硬件的两个硬件fifo，用来一起配合完成作业处理，当cmd fifo下降到设定的阈值或者stat fifo上升到设定的阈值都会触发irq调用spacc_irq_handler然后调用spacc_process_irq，做些硬件中断相关的操作然后调用上面的回调函数spacc_XX_process，回调函数发起tasklet然后调用到spacc_pop_jobs，spacc_pop_jobs将stat fifo的结果取出调用对应作业的回调函数，具体调用过程参考下文的作业调用流程。
 
+&emsp;&emsp;**elspaccusr.ko**注册了一个字符设备，提供了设备节点*/dev/spaccusr*，如下简化代码所示。应用层通过open该设备节点然后通过ioctl设置作业参数和启动作业，具体用法参考下文的作业调用流程。
+
+```c
+static struct file_operations spacc_dev_fops = {
+    .owner = THIS_MODULE,
+    .open           = spacc_dev_open,
+    .release        = spacc_dev_release,
+    .unlocked_ioctl = spacc_dev_ioctl,
+};
+
+static struct miscdevice spaccdev_device = {
+    .minor = MISC_DYNAMIC_MINOR,
+    .name = "spaccusr",
+    .fops = &spacc_dev_fops,
+};
+
+static int __init spacc_dev_init (void)
+{
+    misc_register (&spaccdev_device);
+}
+
+module_init (spacc_dev_init);
+```
 
 #### 1.3 作业调用流程
 
@@ -201,11 +235,11 @@ spacc_close
 
 
 
-### 二. linux crypto api方式
+### 二. linux crypto框架方式
 
 #### 2.1 概括
 
-&emsp;&emsp;crypto api方式是通过应用层打开操作一个套接字来间接调用下面框图中的通用内核api进行加解密作业，**目前spacc sdk还没有实现这种方式**。linux crypto框架比较复杂，这里只关注如何注册和使用加密算法。下面框图是注册和使用加密算法的主要数据结构和函数：
+&emsp;&emsp;linux crypto框架方式是通过应用层打开操作一个套接字来间接调用下面框图中的通用内核api进行加解密作业，**目前spacc sdk还没有实现这种方式**。linux crypto框架比较复杂，这里只关注如何注册和使用加密算法。下面框图是注册和使用加密算法的主要数据结构和函数：
 
 ```c
 /* 
@@ -372,6 +406,126 @@ void aead_request_set_ad(struct aead_request* req, unsigned int assoclen)
 
 #### 2.2 注册流程
 
+&emsp;&emsp;多块对称加密算法注册由算法实现者填充好struct skcipher_alg结构体后通过crypto_register_skcipher发起，如下简化代码所示：
 
+```c
+int crypto_register_skcipher(struct skcipher_alg *alg)
+{
+    struct crypto_alg *base = &alg->base;
+    skcipher_prepare_alg(alg);
+    return crypto_register_alg(base);
+}
+
+static int skcipher_prepare_alg(struct skcipher_alg *alg)
+{
+	struct crypto_alg *base = &alg->base;
+	base->cra_type = &crypto_skcipher_type;
+	base->cra_flags &= ~CRYPTO_ALG_TYPE_MASK;
+	base->cra_flags |= CRYPTO_ALG_TYPE_SKCIPHER;
+}
+
+int crypto_register_alg(struct crypto_alg *alg)
+{
+    __crypto_register_alg(alg);
+}
+
+static struct crypto_larval *__crypto_register_alg(struct crypto_alg *alg)
+{
+    list_add(&alg->cra_list, &crypto_alg_list);
+}
+```
+
+&emsp;&emsp;可以看到crypto_register_skcipher所做的事并不复杂，主要是设置struct skcipher_alg包含的通用算法实现结构体struct crypto_alg的类型然后注册到一个链接了所有注册的算法实现的链表crypto_alg_list上。重点是调用crypto_register_skcipher前如何填充struct skcipher_alg。可以参考`mtk-aes.c`中的cbc(aes)加密算法实现：
+
+```c
+static struct skcipher_alg aes_algs[] = {
+    {
+        .base.cra_name		= "cbc(aes)",
+        .base.cra_driver_name	= "cbc-aes-mtk",
+        .base.cra_priority	= 400,
+        .base.cra_flags		= CRYPTO_ALG_ASYNC,
+        .base.cra_blocksize	= AES_BLOCK_SIZE,
+        .base.cra_ctxsize	= sizeof(struct mtk_aes_ctx),
+        .base.cra_alignmask	= 0xf,
+        .base.cra_module	= THIS_MODULE,
+
+        .min_keysize		= AES_MIN_KEY_SIZE,
+        .max_keysize		= AES_MAX_KEY_SIZE,
+        .setkey			= mtk_aes_setkey,
+        .encrypt		= mtk_aes_cbc_encrypt,
+        .decrypt		= mtk_aes_cbc_decrypt,
+        .ivsize			= AES_BLOCK_SIZE,
+        .init			= mtk_aes_init_tfm,
+    },
+    ...
+};    
+```
+
+&emsp;&emsp;这里就不再展开讲里面的函数的具体实现，因为这是硬件相关的，每个硬件都有所不同。下面按照该示例代码的顺序解释出现的每个数据成员和函数的通用含义，这是每个对称加密硬件实现都要遵守的。
+
+```c
+struct skcipher_alg {
+    struct crypto_alg {
+        //通用算法名字，可以和其他算法实现一样
+        char cra_name[CRYPTO_MAX_ALG_NAME];
+        
+        //独特算法名字, 不可以和其他算法实现的独特或者通用算法名字一样，否则注册不成功
+        char cra_driver_name[CRYPTO_MAX_ALG_NAME];
+        
+        //算法实现的优先值，当通过通用算法名字申请一个算法对象时，如果存在多个通用算法名字
+        //一样的算法实现，则选择优先值最高的算法实现生成算法对象
+        int cra_priority;
+        
+        //标志位，可以表示算法实现的模式类型，比如CRYPTO_ALG_ASYNC表示异步算法，在上文可以看到
+        //crypto_register_skcipher注册过程中还会或上CRYPTO_ALG_TYPE_SKCIPHER表示对称加密
+        u32 cra_flags;
+        
+        //最小加密长度单元，对于块加密算法是一块的大小，对于流加密是一字节
+        unsigned int cra_blocksize;
+        
+        //软件上下文的大小，这是通过crypto_alloc_base分配一个算法对象时额外申请的内存大小
+        unsigned int cra_ctxsize;
+        
+        //输入和输出数据的buf的对齐掩码，如果没按要求对齐内核会在作业前自动搬运到对齐的地方
+        unsigned int cra_alignmask;
+        
+        //注册该算法实现的内核模块，设置为THIS_MODULE
+        struct module *cra_module;
+    }；		
+
+	unsigned int min_keysize;	//该算法支持的最小密钥长度
+	unsigned int max_keysize;	//该算法支持的最大密钥长度	
+	unsigned int ivsize;    	//初始化向量的长度
+	
+    //将密钥设置到硬件或者软件上下文中
+    int (*setkey)(struct crypto_skcipher *tfm, const u8 *key, unsigned int keylen);	
+        
+    //将请求skcipher_request中的src的数据加密到dst中，其中iv和加密的数据大小也在请求中指定    
+    int (*encrypt)(struct skcipher_request *req);
+        
+    //将请求skcipher_request中的src的数据解密到dst中，其中iv和解密的数据大小也在请求中指定    
+    int (*decrypt)(struct skcipher_request *req); 
+        
+    //初始化对称加密算法对象. 在通过crypto_alloc_skcipher申请一个对称加密算法对象
+    //crypto_skcipher时,首先通过crypto_alloc_tfm申请一个通用的算法对象crypto_tfm,
+    //然后就通过contain_of得到包含crypto_tfm的crypto_skcipher的地址, 然后通过这里
+    //的init初始化crypto_skcipher
+    int (*init)(struct crypto_skcipher *tfm);					
+}; 
+```
+
+&emsp;&emsp;通过对skcipher_alg中的这些成员的通用含义的理解再结合对自己的加密硬件的掌握和参考别的加密硬件的实现最终可以将自己的加密硬件注册到内核crypto框架给用户使用。
 
 #### 2.3 作业调用流程
+
+&emsp;&emsp;使用内核crypto框架的好处就是无论硬件有什么差别用户的调用流程都一样。应用层通过操作特定类型的套接字来间接在内核调用2.1小节里的算法使用api来启动作业。对称加密使用的套接字如下：
+
+```c
+struct sockaddr_alg sa = {
+    .salg_family = AF_ALG,
+    .salg_type = "skcipher", 
+    .salg_name = "cbc(aes)" 
+};
+```
+
+&emsp;&emsp;关于应用层如何通过套接字设置参数启动作业可以自行参考网上资料，这里讲解内核层算法使用api的调用流程，因为无论应用层软件是什么形式（比如自己操作设置sockaddr_alg套接字或者使用openssl开源软件）最终都要落实到正确的内核算法使用api的调用流程上。
