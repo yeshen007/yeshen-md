@@ -231,7 +231,8 @@ spacc_packet_dequeue
 spacc_close
 ```
 
-&emsp;&emsp;以上流程是内核中启动一个任务并等待一个任务完成的过程，其中两条===线之间的部分是在启动作业后在作业完成后触发的中断所做的事。中断函数主要负责清中断，取出stat fifo队列中的完成作业，并调用作业的回调函数，这里的作业回调函数是complete，因此会唤醒用wait_for_completion_interruptible等待的任务，任务唤醒后可以通过spacc_packet_dequeue查看作业完成的状态，最后可以通过spacc_close释放作业和关联的上下文或者可以重新设置数据密钥进行下一轮作业。
+&emsp;&emsp;以上流程是内核中启动一个任务并等待一个任务完成的过程，其中两条===线之间的部分是在启动作业后在作业完成后触发的中断所做的事。中断函数主要负责清中断，取出stat fifo队列中的完成作业，并调用作业的回调函数，这里的作业回调函数是complete，因此会唤醒用wait_for_completion_interruptible等待的任务，任务唤醒后可以通过spacc_packet_dequeue查看作业完成的状态，最后可以通过spacc_close释放作业和关联的上下文或者可以重新设置数据密钥进行下一轮作业。  
+&emsp;&emsp;这里只讲作业调用的流程，没有详细说明调用的函数的参数设置，这涉及到很多的spacc硬件架构细节和相关加密知识，自行参考spacc手册和相关加密模式资料。
 
 
 
@@ -609,3 +610,156 @@ static int test_skcipher(void)
 ```
 
 &emsp;&emsp;调用流程上面的代码注释已经写的很清晰，可以在内核模块测试代码中直接调用test_skcipher发起初始化和启动加密作业。在test_skcipher中首先通过crypto_alloc_skcipher申请算法对象；然后通过skcipher_request_alloc对该算法对象申请一个请求；然后通过skcipher_request_set_callback设置请求回调函数；然后通过crypto_skcipher_setkey将密钥设置到硬件中；然后通过skcipher_request_set_crypt将数据源地址和目的地址，iv和加密数据长度设置到请求中；然后通过test_skcipher_encdec中调用的crypto_skcipher_encrypt启动异步作业请求处理，最终会调用到skcipher_alg的硬件实现的encrypt，通常是将请求放入某个队列然后返回；然后通过crypto_wait_req中调用的wait_for_completion睡眠等待请求完成，最后请求完成后自动调用回调函数crypto_req_done接着调用complete唤醒该加密任务进程。
+
+
+
+### 三.  其他
+
+#### 大数据量加密方案
+
+&emsp;&emsp;由于加密数据可能很大，而加密硬件spacc一次性能处理的数据不超过1m，因此需要探讨大数据量如何分块加密的方式，其中关系到应用层和驱动层的分工和协作，以下给出了四种粗略方案，其中第一种到第三种使用传统设备节点方式，第四种使用linux crypto方式。
+
+##### 第一种 
+
+```c
++----------+----------+----------+----------+----------+
+|   job1   |    job2  |    job3  |    job4  |   job5   |          用户态
++----------+----------+----------+----------+----------+
+    |   ^      |  ^    	  |	 ^		  |  ^ 	    |   ^ 	 			
+    V   |      V  |       V  |        V  |      V   |
++----------+----------+----------+----------+----------+
+|   wait   |   wait   |   wait   |    wait  |   wait   |          内核态
++----------+----------+----------+----------+----------+
+
+```
+
+这种方案是spacc sdk目前提供的方式。因为spacc加密硬件一次能处理的数据不超过1M，因此每一个作业处理的数据大小不能超过1M。应用层每发起一个作业请求不会马上返回，而是阻塞在内核态直到收到作业完成中断被唤醒才返回用户态，然后接着发起下一个作业请求。使用这种方式的好处是驱动几乎不用改动，能很快使用起来。缺点是后面的数据请求需要等到前面的数据处理完才能发起。
+
+##### 第二种
+
+```c 
++----------+----------+----------+----------+----------+
+|   job1   |    job2  |    job3  |    job4  |   job5   |          用户态
++----------+----------+----------+----------+----------+
+    |   ^      |  ^    	  |	 ^		 |  ^ 	    |  ^					
+    V   |      V  |       V  |       V  |       V  |
++----------+----------+----------+----------+----------+
+|  nowait  |  nowait  |  nowait  |  nowait  |   wait   |          内核态
++----------+----------+----------+----------+----------+
+```
+
+第二种方案如图所示，不是每个作业都要阻塞等待上一个作业完成才能发起。驱动可以跟踪spacc中的fifo，当用户态通过作业提交接口ioctl进入内核态时，如果发现fifo中的作业个数没有到达驱动设定的值，可以直接将作业放入fifo然后直接返回。如果fifo中的作业个数已经达到驱动设置的值，则阻塞睡眠在内核，直到某个之前提交的作业完成触发中断，在中断中将阻塞在内核的该任务唤醒。此时继续查看fifo数量，此时fifo作业数量会少于设定的最大值，因此可以将作业放入fifo然后返回用户态。其实第一种方案是这一种方案的一个特例，只是fifo作业数量最大值是1。使用这种方案比第一种方案有更好的性能，需要对驱动作些中断方面的修改。
+
+##### 第三种
+
+```c
++------------------------------------------------------+
+|                         data                         |          用户态
++------------------------------------------------------+
+                      |          ^   
+                      V          |
++----------+----------+----------+----------+----------+
+|   job1   |    job2  |    job3  |    job4  |   job5   |          内核态
++----------+----------+----------+----------+----------+
+```
+
+第三种方案是应用层将数据一次性全部发给内核，然后内核再分块进行处理，处理完后再返回给应用层。这种方案的好处是应用层几乎不用处理，只需要提供源数据地址和目的数据地址。但是驱动改动量比较大，并且将大量数据一次传送给内核会对内核造成很大的负担。
+
+##### 第四种
+
+下面是网上的一个例子，用这种方式应用软件移植性高，只要硬件在内核crypto框架中正确的注册都可以按照下面的方式使用，其中对于大数据量处理也需要自行分块处理，如代码中for循环使用sendmsg来发送数据给硬件加密，每次sendmsg发送的大小不能超过硬件的最大加密长度。在分块使用sendmsg发送完之后可以使用一个recv一次性接收完处理后得到的数据。可能存在一些开源软件封装了这些接口让用户更容易使用，也许不需要用户自己分块，但是对内核实现来说是一样的。目前spacc sdk还未实现对内核crypto框架的支持，需要熟悉crypto框架和spacc然后实现算法注册进内核才能使用。
+
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <linux/if_alg.h>
+#include <unistd.h>
+#include <fcntl.h>
+
+#define BLOCK_SIZE 16 
+
+int main() {
+    // 初始化加密数据和密钥
+    char *plaintext = "Hello, world! This is a test of the long plaintext. It is longer than one block and needs to be split into multiple blocks for encryption.";
+    char *key = "0123456789abcdef"; 
+    size_t plaintext_len = strlen(plaintext);
+    char iv[BLOCK_SIZE] = {0}; // 初始向量为空
+
+    // 创建socket并绑定算法类型为"skcipher"
+    int fd = socket(AF_ALG, SOCK_SEQPACKET, 0);
+    struct sockaddr_alg sa = {
+        .salg_family = AF_ALG,
+        .salg_type = "skcipher",
+        .salg_name = "cbc(aes)"
+    };
+    bind(fd, (struct sockaddr *)&sa, sizeof(sa)) 
+
+    // 设置加密参数
+    struct msghdr msg = {0};
+    struct cmsghdr *cmsg;
+    char cbuf[CMSG_SPACE(sizeof(struct af_alg_iv))] = {0};
+
+    msg.msg_control = cbuf;
+    msg.msg_controllen = sizeof(cbuf);
+
+    struct iovec iov[2];
+    iov[0].iov_base = iv;
+    iov[0].iov_len = BLOCK_SIZE;
+    iov[1].iov_base = malloc(BLOCK_SIZE * sizeof(char));
+    iov[1].iov_len = BLOCK_SIZE;
+
+    msg.msg_iov = iov;
+    msg.msg_iovlen = 2;
+
+    cmsg = CMSG_FIRSTHDR(&msg);
+    cmsg->cmsg_level = SOL_ALG;
+    cmsg->cmsg_type = ALG_SET_IV;
+    cmsg->cmsg_len = CMSG_LEN(sizeof(struct af_alg_iv));
+    struct af_alg_iv *alg_iv = (struct af_alg_iv *)CMSG_DATA(cmsg);
+    alg_iv->ivlen = BLOCK_SIZE;
+
+    // 设置加密会话
+    int tfmfd = accept(fd, NULL, 0);
+    if (tfmfd == -1) {
+        perror("accept");
+        exit(EXIT_FAILURE);
+    }
+    if (setsockopt(tfmfd, SOL_ALG, ALG_SET_KEY, key, 16) == -1) {
+        perror("setsockopt set key");
+        exit(EXIT_FAILURE);
+    }
+
+    // 加密数据
+    size_t i = 0;
+    for (i = 0; i < plaintext_len / BLOCK_SIZE; i++) { // 处理整个块
+        memcpy(iov[1].iov_base, plaintext + i * BLOCK_SIZE, BLOCK_SIZE);
+        sendmsg(tfmfd, &msg, 0);
+    }
+    if (plaintext_len % BLOCK_SIZE != 0) { // 处理剩余部分
+        iov[1].iov_len = BLOCK_SIZE;
+        memset(iov[1].iov_base, 0, BLOCK_SIZE);
+        memcpy(iov[1].iov_base, plaintext + i * BLOCK_SIZE, plaintext_len % BLOCK_SIZE);
+        sendmsg(tfmfd, &msg, 0);
+    }
+
+    // 接收加密后的数据
+    size_t ciphertext_len = (plaintext_len / BLOCK_SIZE + 1) * BLOCK_SIZE; // 加密后最多可能增加一个块的长度
+    char *ciphertext = calloc(1, ciphertext_len * sizeof(char));
+    ssize_t res = recv(tfmfd, ciphertext, ciphertext_len, MSG_WAITALL);
+
+    printf("Plaintext: %s\n", plaintext);
+    printf("Ciphertext: ");
+    for (int i=0; i<res; i++) {
+        printf("%02x", (unsigned char)ciphertext[i]);
+    }
+    printf("\n");
+
+    close(tfmfd);
+    close(fd);
+
+    free(iov[1].iov_base);
+    free(ciphertext);
+    return 0;
+}
+```
