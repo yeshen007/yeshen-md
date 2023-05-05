@@ -7,6 +7,8 @@
 &emsp;&emsp;linux流行的通用加解密开源框有openssl，gnupg，dm-crypt等。其中openssl是一个最为通用和广泛使用的开源框架，其他的开源框架一般侧重某些应用场景。  
 &emsp;&emsp;openssl可以通过af_alg套接字和/dev/crypto设备节点使用linux crypto api框架注册的算法。/dev/crypto方式兼容OpenBSD cryptodev user-space API，需要额外下载安装cryptodev-linux，af_alg套接字方式不需要额外安装，较为方便。openssl提供了一个通用的加解密库libcrypto，一个tls协议库libssl和命令行工具openssl。其中libcrypto就是应用层使用加解密的核心组件，可以单独使用。
 
+
+
 ### 二. openssl配置编译安装
 
 ```c
@@ -31,7 +33,9 @@ sudo cp -r /home/syshaps/workspace/zye/openssl-target/usr/local/lib/libcrypto.* 
 sudo cp -r /home/syshaps/workspace/zye/openssl-target/usr/local/lib/libssl.* /opt/gcc-arm-10.2-2020.11-x86_64-aarch64-none-linux-gnu/aarch64-none-linux-gnu/libc/usr/lib64
 
 //拷贝库文件到目标文件系统
+//cpio文件系统中已经有了，这里只是列出命令，没有拷贝，如果跑不起来再拷贝覆盖cpio，使得同步
 sudo cp -r /home/syshaps/workspace/zye/openssl-target/usr/local/lib/libcrypto.* target_rootfs/usr/lib
+sudo cp -r /home/syshaps/workspace/zye/openssl-target/usr/local/lib/libssl.* target_rootfs/usr/lib
 
 /* 清除 */
 make clean

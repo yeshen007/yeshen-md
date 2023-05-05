@@ -11,8 +11,8 @@
 &emsp;&emsp;设备节点方式是通过应用程序打开设备节点，然后通过ioctl设置密钥和其他相关参数，最后启动作业。**这是spacc sdk提供的方式**，spacc sdk驱动主要包含以下几个内核模块：
 
 - **elppdu.ko** ：由pdu.c和一些辅助代码编译得到，它给其他驱动模块提供了内存、DMA的分配和操作，资源锁定释放等通用的api。这些api通常是linux内核其他函数的包装，如pdu_io_write32是对writel的包装，PDU_LOCK宏扩展就是spin_lock_irqsave。
-- **elpmem.ko** ：由spacc_mem.c编译得到，是一个平台设备驱动模块，它主要做的首先是创建平台设备，根据在Makefile中配置的PDU_BASE_ADDR和PDU_BASE_IRQ生成资源，读取sapcc硬件寄存器填入pdu_info结构中，将资源和pdu_info添加平台设备并将平台设备注册到平台设备总线。
-- **elspacc.ko** ：由spacc.c和其他辅助代码编译得到，封装和提供了对加密硬件的底层操作，比如作业的管理，中断的管理，密钥上下文的设置等。elspacc.ko 注册的平台驱动会和elpmem.ko匹配，然后提取出平台设备的资源和pdu_info，根据这些数据和对硬件相应的读取设置操作初始化一个spacc_device结构体，该结构体包含除了根据作业需要临时传入设置参数之外的所有需要的数据。
+- **elpmem.ko** ：由spacc_mem.c编译得到，它主要做的首先是创建平台设备，根据在Makefile中配置的PDU_BASE_ADDR和PDU_BASE_IRQ生成资源，读取sapcc硬件寄存器填入pdu_info结构中，将资源和pdu_info添加平台设备并将平台设备注册到平台设备总线。
+- **elspacc.ko** ：由spacc.c和其他辅助代码编译得到，封装和提供了对加密硬件的底层操作，比如作业的管理，中断的管理，密钥上下文的设置等。elspacc.ko 注册的平台设备驱动会和elpmem.ko注册的平台设备匹配，然后提取出平台设备的资源和pdu_info，根据这些数据和对硬件相应的读取设置操作初始化一个spacc_device结构体，该结构体包含除了根据作业需要临时传入设置参数之外的所有需要的数据。
 - **elspaccusr.ko** ：由spacc_dev.c编译得到，它注册了一个字符设备*/dev/spaccusr*，应用层可以打开操作这个设备节点进行加解密作业，主要是通过调用ioctl并通过传入适当的参数来设置和启动加解密操作。该字符设备的ioctl驱动接口使用elspacc.ko中的函数进行设置和作业。
 
 &emsp;&emsp;**算法实现者**实现和提供算法，**算法使用者**使用算法进行作业处理。算法使用者主要关注**作业调用流程**，算法实现者既要关注**注册流程**也要关注作业调用流程。
@@ -168,6 +168,8 @@ module_init (spacc_dev_init);
 ```
 
 #### 1.3 作业调用流程
+
+> 参考example.c
 
 ```c
 /* 
