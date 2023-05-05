@@ -42,6 +42,11 @@ addr: 192.168.11.146
 account: zye
 passwd: Yezheng@123
 登录方式：通过办公室pc或者家里电脑vpn远程控制办公室pc打开远程桌面连接来连接
+
+/* 本机ip */
+192.168.11.84
+255.255.255.0
+192.168.11.1
 ```
 
 #### 2. 代码编译
@@ -67,7 +72,25 @@ make clean
 #### 3. 仿真运行
 
 ```c
+/* 切换到haps服务器 */
+cd /home/syshaps/workspace/zye/haps/bin
 
+/* scp拷贝247服务器编译好的镜像到该目录 */
+scp zye@192.168.11.247:/home/zye/kernel/arch/arm64/boot/dts/corerain/bass-haps.dtb .
+scp zye@192.168.11.247:/home/zye/kernel/arch/arm64/boot/Image .   
+
+/* 配置模拟硬件 */
+config /home/syshaps/workspace/storage/yqwu/haps_projects/confpro_ws_20230325_4boot_20230412/designs
+
+/* 将镜像写入ddr并启动 */
+./ddr_writing bl31.bin 0x400000000
+./ddr_writing bass-haps.dtb 0x400100000
+./ddr_writing Image 0x400200000
+./ddr_writing rootfs_haps.cpio 0x440000000
+./write_csr 0x403000000 0x20221109
+    
+/* 连接串口看打印 */    
+sudo minicom    
 ```
 
 #### 4. misc
@@ -82,5 +105,14 @@ make clean
 				4_详细设计		//ip模块详细文档
 				5_软件设计		//软件相关文档
 					Bass_Address_Mapping	//物理地址映射
+    
+/* 拷贝文件到hpas文件系统 */    
+cd /home/syshaps/workspace/zye/haps/cpio_mnt
+cpio -iv < ../bin/rootfs_haps.cpio		//解压到目录
+...		//增删改
+find . | cpio --quiet -o -H newc > ../bin/rootfs_haps_new.cpio	//重新打包
+
+/* 查看交叉编译工具aarch64-none-linux-gnu-gcc的头文件库文件默认搜素路径 */
+aarch64-none-linux-gnu-gcc -print-sysroot
 ```
 
