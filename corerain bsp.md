@@ -43,10 +43,12 @@ account: zye
 passwd: Yezheng@123
 登录方式：通过办公室pc或者家里电脑vpn远程控制办公室pc打开远程桌面连接来连接
 
-/* 本机ip */
+/* 本机ip账号密码 */
 192.168.11.84
 255.255.255.0
 192.168.11.1
+Administrator
+yes!00
 ```
 
 #### 2. 代码编译
@@ -67,6 +69,9 @@ make ARCH=arm64 CROSS_COMPILE=aarch64-none-linux-gnu- distclean
 cd /home/zye/spacc
 make -j16
 make clean
+
+/* spacc驱动模块和测试用例拷贝到cpio文件系统的以下目录 */
+path_to_your_cpiofs/usr/local/spacc
 ```
 
 #### 3. 仿真运行
@@ -79,10 +84,10 @@ cd /home/syshaps/workspace/zye/haps/bin
 scp zye@192.168.11.247:/home/zye/kernel/arch/arm64/boot/dts/corerain/bass-haps.dtb .
 scp zye@192.168.11.247:/home/zye/kernel/arch/arm64/boot/Image .   
 
-/* 配置模拟硬件 */
+/* 配置模拟硬件(./zye_config_a55) */
 config /home/syshaps/workspace/storage/yqwu/haps_projects/confpro_ws_20230325_4boot_20230412/designs
 
-/* 将镜像写入ddr并启动 */
+/* 将镜像写入ddr并启动(./run.sh) */
 ./ddr_writing bl31.bin 0x400000000
 ./ddr_writing bass-haps.dtb 0x400100000
 ./ddr_writing Image 0x400200000
