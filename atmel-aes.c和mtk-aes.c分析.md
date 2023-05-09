@@ -191,8 +191,8 @@ mtk_crypto_probe
 	mtk_cipher_alg_register
 		mtk_aes_record_init
 			crypto_init_queue(&aes[i]->queue, AES_QUEUE_SIZE)
-			tasklet_init(&aes[i]->queue_task, mtk_aes_queue_task,)
-			tasklet_init(&aes[i]->done_task, mtk_aes_done_task, ) 
+			tasklet_init(&aes[i]->queue_task, mtk_aes_queue_task)
+			tasklet_init(&aes[i]->done_task, mtk_aes_done_task) 
 		devm_request_irq(mtk_aes_irq)
 		mtk_aes_register_algs
 ```
@@ -253,4 +253,19 @@ static int mtk_aes_map(struct mtk_cryp *cryp, struct mtk_aes_rec *aes)
 	return mtk_aes_xmit(cryp, aes);
 }
 ```
+
+#### 2.5 一个加密完成
+
+```c
+mtk_aes_irq
+	tasklet_schedule(&aes->done_task);		//mtk_aes_done_task
+		mtk_aes_unmap(cryp, aes);
+		aes->resume(cryp, aes);			//mtk_aes_transfer_complete
+			mtk_aes_complete
+				aes->areq->complete(aes->areq, err);
+				tasklet_schedule(&aes->queue_task);		//mtk_aes_queue_task
+					mtk_aes_handle_queue
+```
+
+#### 2.6 总结
 
