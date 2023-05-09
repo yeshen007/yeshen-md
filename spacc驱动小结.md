@@ -1,4 +1,4 @@
-<center>spacc驱动小结</center>
+## <center>spacc驱动小结</center>
 
 [TOC]
 
@@ -246,11 +246,11 @@ spacc_close
 
 ```c
 /* 
- * 通用基础数据结构和函数
+ * 通用基础数据结构和函数(crypto.h)
  */
 struct crypto_alg			//算法实现
-struct crypto_tfm			//算法对象,包含struct crypto_alg指针和上下文指针
-struct crypto_async_request	 //请求,包含struct crypto_tfm指针
+struct crypto_tfm			//算法对象,包含struct crypto_alg指针和算法对象上下文
+struct crypto_async_request	 //请求,包含struct crypto_tfm指针和请求上下文
    
 //注册和注销一个算法实现    
 int crypto_register_alg(struct crypto_alg* alg)
@@ -266,7 +266,7 @@ void crypto_req_done(struct crypto_async_request* req, int err)
 
 
 /*
- * single-block symmetric key cipher(单块对称加密)相关数据结构和函数
+ * single-block symmetric key cipher单块对称加密相关数据结构和函数(crypto.h)
  */
 struct cipher_alg		//单块对称加密算法实现,被crypto_alg包含
 struct crypto_cipher	//单块对称加密算法对象,包含struct crypto_tfm
@@ -286,7 +286,7 @@ void crypto_cipher_encrypt_one(struct crypto_cipher* tfm, u8* dst, const u8* src
 void crypto_cipher_decrypt_one(struct crypto_cipher* tfm, u8* dst, const u8* src)    
 
 /* 
- * muti-block symmetric key cipher(多块对称加密)相关数据结构和函数 
+ * muti-block symmetric key cipher多块对称加密相关数据结构和函数(skcipher.h)
  */ 
 struct skcipher_alg    	  //多块对称加密算法实现,包含struct crypto_alg
 struct crypto_skcipher    //多块对称加密算法对象,包含struct crypto_tfm
@@ -317,7 +317,7 @@ void skcipher_request_set_crypt(struct skcipher_request* req, struct scatterlist
     
     
 /* 
- * hash(包括裸hash和hmac模式hash)相关数据结构和函数 
+ * hash包括裸hash和hmac模式hash相关数据结构和函数 
  */   
 struct hash_alg_common	 //通用hash算法实现,包含struct crypto_alg
 struct ahash_alg		//异步hash算法实现,包含struct hash_alg_common 
@@ -371,7 +371,7 @@ int crypto_shash_final(struct shash_desc* desc, u8* out)
 int crypto_shash_finup(struct shash_desc* desc, const u8* data, unsigned int len, u8* out)
     
 /*
- * aead(认证加密)相关数据结构和函数 
+ * aead认证加密相关数据结构和函数 
  */ 
 struct aead_alg		//认证加密算法实现,包含struct crypto_alg
 struct crypto_aead	//认证加密算法对象,包含struct crypto_tfm
@@ -487,7 +487,7 @@ struct skcipher_alg {
         //最小加密长度单元，对于块加密算法是一块的大小，对于流加密是一字节
         unsigned int cra_blocksize;
         
-        //软件上下文的大小，这是通过crypto_alloc_base分配一个算法对象时额外申请的内存大小
+        //软件上下文的大小，这是分配一个算法对象时额外申请的内存大小
         unsigned int cra_ctxsize;
         
         //输入和输出数据的buf的对齐掩码，如果没按要求对齐内核会在作业前自动搬运到对齐的地方
