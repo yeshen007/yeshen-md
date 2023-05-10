@@ -331,6 +331,30 @@ mtk_aes_irq
 
 ### 3. spacc加速器crypto api设计
 
+> spacc-platform.c
+> spacc-aes.c
+
 #### 3.1 注册
 
-> 
+&emsp;&emsp;首先要说明一下，这里要基于原有的spacc sdk驱动包的基础上注册，但是有相应的修改。具体如下：还先加载elppdu.ko(pdu.c ...)、elpmem.ko(spacc_mem.c)或者直接编译进内核，然后用重新编写的spacc-platform.c替换掉elspacc.ko(spacc.c)，spacc-platform.c有很多直接拷贝的spacc.c也有一些要重新实现。比如获取平台设备资源和设置struct spacc_priv、struct spacc_device全部照搬（但不一定全部使用），tasklet和irq要重新实现，而且重新定义一个struct spacc_cryp，用来包含struct spacc_priv和新的内容。接下来的注册就从spacc-platform.c讲起。
+
+```c
+static struct platform_driver spacc_crypto_driver = {
+	.probe = spacc_crypto_probe,
+	.remove = spacc_crypto_remove,
+	.driver = {
+		.name = "spacc",	//和spacc_mem.c中注册的平台设备匹配然后调用spacc_crypto_probe
+		.owner = THIS_MODULE
+ 	},
+};
+module_platform_driver(spacc_crypto_driver);
+
+
+static int spacc_crypto_probe(struct platform_device *pdev)
+{
+
+
+}
+	
+```
+
