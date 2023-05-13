@@ -1,6 +1,6 @@
-## <center>crypto api实现分析与设计</center>
+## <center>spacc crypto api分析与设计实现</center>
 
-### 1. atmel加速器分析记录
+### 1. atmel加速器代码分析记录
 
 > atmel-aes.c
 
@@ -201,7 +201,7 @@ atmel_aes_irq
 
 
 
-### 2. mtk加速器分析记录
+### 2. mtk加速器代码分析记录
 
 > mtk-platform.c mtk-aes.c
 
@@ -329,7 +329,7 @@ mtk_aes_irq
 
 
 
-### 3. spacc加速器crypto api设计
+### 3. spacc crypto api设计实现
 
 > spacc-platform.c
 > spacc-aes.c
