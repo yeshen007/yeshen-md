@@ -145,14 +145,14 @@ static int atmel_aes_handle_queue(struct atmel_aes_dev *aes_dd,
 	aes_dd->areq = areq;	
 	aes_dd->ctx = ctx;		
 
-	err = ctx->start(aes_dd);	//->
+	err = ctx->start(aes_dd);	//->atmel_aes_start
 }
     
 static int atmel_aes_start(struct atmel_aes_dev *aes_dd)
 {
 	if (use_dma)
 		return atmel_aes_dma_start(aes_dd, req->src, req->dst, req->cryptlen,
-					   atmel_aes_transfer_complete);
+					   atmel_aes_transfer_complete); //->
 	else
 		return atmel_aes_cpu_start(aes_dd, req->src, req->dst, req->cryptlen,
 				   atmel_aes_transfer_complete);
@@ -257,14 +257,14 @@ crypto_alloc_skcipher
 				frontend->init_tfm()		//crypto_skcipher_init_tfm
 					alg->init		//mtk_aes_init_tfm
 						crypto_skcipher_set_reqsize(sizeof(struct mtk_aes_reqctx))
-						ctx->base.start = mtk_aes_start	//
+						ctx->base.start = mtk_aes_start	//设置start回调
 ```
 
 #### 2.3 分配设置请求对象
 
 ```c
 skcipher_request_alloc
-	kmalloc(sizeof(struct skcipher_request) + crypto_skcipher_reqsize(tfm))
+	kmalloc(sizeof(struct skcipher_request) + crypto_skcipher_reqsize(tfm))	//附加请求上下文size
 ...
 skcipher_request_set_crypt(req, src, dst, cryptlen, iv)
 ```
@@ -287,8 +287,8 @@ crypto_skcipher_encrypt
 			mtk_aes_handle_queue
 				crypto_enqueue_request
 				crypto_dequeue_request
-					ctx->start()		//mtk_aes_start
-						aes->resume = mtk_aes_transfer_complete;
+					ctx->start()		//调用start回调mtk_aes_start
+						aes->resume = mtk_aes_transfer_complete;	//设置resume回调
 						mtk_aes_dma		//->
 
 static int mtk_aes_map(struct mtk_cryp *cryp, struct mtk_aes_rec *aes)
@@ -315,7 +315,7 @@ mtk_aes_irq
 	清中断
 	tasklet_schedule(&aes->done_task);		//mtk_aes_done_task
 		mtk_aes_unmap(cryp, aes);
-		aes->resume(cryp, aes);			//mtk_aes_transfer_complete
+		aes->resume(cryp, aes);			//调用resume回调mtk_aes_transfer_complete
 			mtk_aes_complete
 				aes->flags &= ~AES_FLAGS_BUSY
 				aes->areq->complete(aes->areq, err);
