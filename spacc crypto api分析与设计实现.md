@@ -58,6 +58,7 @@ crypto_alloc_skcipher
 				alloc(sizeof(struct crypto_tfm) 
                       	+ frontend->tfmsize 		//offsetof(struct crypto_skcipher, base)
                       	+ frontend->extsize(alg)	//sizeof(struct atmel_aes_ctx)
+				tfm->__crt_alg = alg;		//算法对象绑定算法
 				frontend->init_tfm()		//crypto_skcipher_init_tfm
 					alg->init		//atmel_aes_init_tfm
 						crypto_skcipher_set_reqsize(sizeof(struct atmel_aes_reqctx))
@@ -69,6 +70,7 @@ crypto_alloc_skcipher
 ```c
 skcipher_request_alloc
 	kmalloc(sizeof(struct skcipher_request) + crypto_skcipher_reqsize(tfm))
+	skcipher_request_set_tfm(req, tfm)	//请求绑定算法对象
 ...
 skcipher_request_set_crypt(req, src, dst, cryptlen, iv)
 ```
@@ -254,6 +256,7 @@ crypto_alloc_skcipher
 				alloc(sizeof(struct crypto_tfm) 
                       	+ frontend->tfmsize 		//offsetof(struct crypto_skcipher, base)
                       	+ frontend->extsize(alg)	//sizeof(struct mtk_aes_ctx)
+				tfm->__crt_alg = alg;		//算法对象绑定算法
 				frontend->init_tfm()		//crypto_skcipher_init_tfm
 					alg->init		//mtk_aes_init_tfm
 						crypto_skcipher_set_reqsize(sizeof(struct mtk_aes_reqctx))
@@ -265,6 +268,7 @@ crypto_alloc_skcipher
 ```c
 skcipher_request_alloc
 	kmalloc(sizeof(struct skcipher_request) + crypto_skcipher_reqsize(tfm))	//附加请求上下文size
+	skcipher_request_set_tfm(req, tfm)	//请求绑定算法对象
 ...
 skcipher_request_set_crypt(req, src, dst, cryptlen, iv)
 ```
@@ -289,23 +293,12 @@ crypto_skcipher_encrypt
 				crypto_dequeue_request
 					ctx->start()		//调用start回调mtk_aes_start
 						aes->resume = mtk_aes_transfer_complete;	//设置resume回调
-						mtk_aes_dma		//->
-
-static int mtk_aes_map(struct mtk_cryp *cryp, struct mtk_aes_rec *aes)
-{
-	if (aes->src.sg == aes->dst.sg) {
-		aes->src.sg_len = dma_map_sg(cryp->dev, aes->src.sg, aes->src.nents,
-					     			DMA_BIDIRECTIONAL);
-		aes->dst.sg_len = aes->src.sg_len;
-	} else {
-		aes->src.sg_len = dma_map_sg(cryp->dev, aes->src.sg,
-					    		 	aes->src.nents, DMA_TO_DEVICE);
-		aes->dst.sg_len = dma_map_sg(cryp->dev, aes->dst.sg,
-					     			aes->dst.nents, DMA_FROM_DEVICE);
-	}
-
-	return mtk_aes_xmit(cryp, aes);		//->
-}
+						mtk_aes_dma		
+							mtk_aes_check_aligned
+							mtk_aes_info_init
+							mtk_aes_map
+								dma_map_sg
+								mtk_aes_xmit
 ```
 
 #### 2.6 一个加密完成
@@ -315,7 +308,7 @@ mtk_aes_irq
 	清中断
 	tasklet_schedule(&aes->done_task);		//mtk_aes_done_task
 		mtk_aes_unmap(cryp, aes);
-		aes->resume(cryp, aes);			//调用resume回调mtk_aes_transfer_complete
+		aes->resume(cryp, aes);			//回调mtk_aes_transfer_complete
 			mtk_aes_complete
 				aes->flags &= ~AES_FLAGS_BUSY
 				aes->areq->complete(aes->areq, err);
@@ -350,11 +343,109 @@ static struct platform_driver spacc_crypto_driver = {
 module_platform_driver(spacc_crypto_driver);
 
 
-static int spacc_crypto_probe(struct platform_device *pdev)
-{
+spacc_crypto_probe
+	struct spacc_priv *priv = devm_kzalloc();
+	struct spacc_cryp *cryp = devm_kzalloc();	
+	cryp->dev = &pdev->dev;				
+	cryp->priv = priv;					
+	platform_set_drvdata(pdev, cryp);
+	cryp->base = baseaddr;		
+	cryp->irq = irq;	
+	spacc_init();							  //spacc硬件初始化
+	spacc_irq_glbl_disable(&priv->spacc);		//关闭spacc全局中断
+	spacc_cipher_record_alg_register(cryp);		
+		spacc_aes_record_alg_register()
+			spacc_aes_record_init()
+				crypto_init_queue(&aes->queue, AES_QUEUE_SIZE);
+				tasklet_init(&aes->done_task, spacc_aes_done_task);
+				tasklet_init(&aes->queue_task, spacc_aes_queue_task);
+			spacc_aes_register_algs()
+				crypto_register_skcipher(spacc_aes_algs);             
+	devm_request_irq(spacc_crypto_irq);
+	spacc_irq_cmdx_disable(&priv->spacc, 0);	//关闭cmd0中断
+	spacc_irq_stat_wd_disable(&priv->spacc);	//关闭stat watchdog中断
+	spacc_irq_stat_enable(&priv->spacc, 1);		//设置stat_cnt为1同时使能stat fifo中断
+	spacc_irq_glbl_enable(&priv->spacc);		//使能spacc全局中断,其实只有stat fifo中断	
 
 
-}
-	
+static struct skcipher_alg spacc_aes_algs[] = {
+    {
+        .base.cra_name		= "cbc(aes)",
+        .base.cra_driver_name	= "spacc-cbc-aes",
+        .base.cra_priority	= 400,
+        .base.cra_flags		= CRYPTO_ALG_ASYNC,
+        .base.cra_blocksize	= AES_BLOCK_SIZE,
+        .base.cra_ctxsize	= sizeof(struct spacc_aes_ctx),
+        .base.cra_alignmask	= 0xf,
+        .base.cra_module	= THIS_MODULE,
+
+        .min_keysize		= AES_MIN_KEY_SIZE,
+        .max_keysize		= AES_MAX_KEY_SIZE,
+        .setkey			= spacc_aes_setkey,
+        .encrypt		= spacc_aes_cbc_encrypt,
+        .decrypt		= spacc_aes_cbc_decrypt,
+        .ivsize			= AES_BLOCK_SIZE,
+        .init			= spacc_aes_init_tfm,
+    },  
+};
+```
+
+#### 3.2 分配算法对象
+
+```c
+crypto_alloc_skcipher
+	crypto_alloc_tfm
+		crypto_alloc_tfm_node
+			crypto_find_alg
+			crypto_create_tfm_node
+				alloc(sizeof(struct crypto_tfm) 
+                      	+ frontend->tfmsize 		//offsetof(struct crypto_skcipher, base)
+                      	+ frontend->extsize(alg)	//sizeof(struct spacc_aes_ctx)
+				tfm->__crt_alg = alg			//绑定算法
+				frontend->init_tfm()			  //crypto_skcipher_init_tfm
+					alg->init					//spacc_aes_init_tfm
+						crypto_skcipher_set_reqsize(sizeof(struct spacc_aes_reqctx))
+						ctx->base.start = spacc_aes_start	//设置start回调
+```
+
+#### 3.3 分配设置请求对象
+
+&emsp;&emsp;同2.3
+
+#### 3.4 设置秘钥
+
+&emsp;&emsp;同2.4
+
+#### 3.5 启动一个加密
+
+```c
+crypto_skcipher_encrypt
+	spacc_aes_cbc_encrypt		//crypto_skcipher_alg(tfm)->encrypt(req);
+		spacc_aes_crypt
+			spacc_aes_handle_queue
+				crypto_enqueue_request
+				crypto_dequeue_request
+					ctx->start()		//spacc_aes_start
+						aesrec->aes->resume = spacc_aes_transfer_complete;	//设置resume回调
+						spacc_aes_dma		
+							spacc_aes_check_aligned
+							spacc_aes_map_xmit			   //映射dma设置寄存器
+								dma_map_sg
+								spacc_aes_xmit
+```
+
+#### 3.6 一个加密完成
+
+```c
+spacc_crypto_irq
+	清中断
+	tasklet_schedule(&aesrec->done_task);		//spacc_aes_done_task
+		...			//dequeue packet, free ddt, unmap dma, close handle
+		aesrec->ctx->resume(cryp);	//spacc_aes_transfer_complete
+			spacc_aes_complete
+				aesrec->flags &= ~AES_FLAGS_BUSY
+				aesrec->areq->complete(aesrec->areq, err)
+				tasklet_schedule(&aesrec->queue_task) 		//spacc_aes_queue_task
+					spacc_aes_handle_queue(cryp, NULL);                
 ```
 
