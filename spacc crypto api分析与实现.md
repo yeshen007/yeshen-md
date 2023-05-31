@@ -1,4 +1,4 @@
-## <center>spacc crypto api分析与设计实现</center>
+## <center>spacc crypto api分析与实现</center>
 
 ### 1. atmel加速器代码分析记录
 
@@ -28,22 +28,22 @@ static int atmel_aes_probe(struct platform_device *pdev)
 }
 
 static struct skcipher_alg aes_algs[] = {
-...
-{
-	.base.cra_name		= "cbc(aes)",
-	.base.cra_driver_name	= "atmel-cbc-aes",
-	.base.cra_blocksize	= AES_BLOCK_SIZE,
-	.base.cra_ctxsize	= sizeof(struct atmel_aes_ctx),		
+    ...
+    {
+        .base.cra_name		= "cbc(aes)",
+        .base.cra_driver_name	= "atmel-cbc-aes",
+        .base.cra_blocksize	= AES_BLOCK_SIZE,
+        .base.cra_ctxsize	= sizeof(struct atmel_aes_ctx),		
 
-	.init			= atmel_aes_init_tfm,
-	.min_keysize		= AES_MIN_KEY_SIZE,
-	.max_keysize		= AES_MAX_KEY_SIZE,
-	.setkey			= atmel_aes_setkey,
-	.encrypt		= atmel_aes_cbc_encrypt,
-	.decrypt		= atmel_aes_cbc_decrypt,
-	.ivsize			= AES_BLOCK_SIZE,
-},
-...
+        .init			= atmel_aes_init_tfm,
+        .min_keysize		= AES_MIN_KEY_SIZE,
+        .max_keysize		= AES_MAX_KEY_SIZE,
+        .setkey			= atmel_aes_setkey,
+        .encrypt		= atmel_aes_cbc_encrypt,
+        .decrypt		= atmel_aes_cbc_decrypt,
+        .ivsize			= AES_BLOCK_SIZE,
+    },
+    ...
 };
 ```
 
@@ -198,7 +198,7 @@ atmel_aes_irq
 将请求放入crypto_queue，如果加速器有在处理任务则直接返回，如果没有在处理任务则从crypto_queue取出一个请求，并标记加速器在处理任务，然后将请求的成员取出映射和设置，启动硬件加密.
     
 //6.一个加密完成
-触发中断，清除加速器在处理任务标志，回调请求完成函数，通过atmel_aes_handle_queue(&aes_dd，NULL)取出下一个请求，如果有请求则处理，如果没请求了则返回.
+触发中断，清中断，清除加速器在处理任务标志，回调请求完成函数，通过atmel_aes_handle_queue(&aes_dd，NULL)取出下一个请求，如果有请求则处理，如果没请求了则返回.
 ```
 
 
@@ -288,17 +288,26 @@ crypto_skcipher_setkey
 crypto_skcipher_encrypt
 	mtk_aes_cbc_encrypt		//crypto_skcipher_alg(tfm)->encrypt(req);
 		mtk_aes_crypt
+			rctx->mode = AES_FLAGS_ENCRYPT | AES_FLAGS_CBC
 			mtk_aes_handle_queue
 				crypto_enqueue_request
 				crypto_dequeue_request
-					ctx->start()		//调用start回调mtk_aes_start
-						aes->resume = mtk_aes_transfer_complete;	//设置resume回调
-						mtk_aes_dma		
-							mtk_aes_check_aligned
-							mtk_aes_info_init
-							mtk_aes_map
-								dma_map_sg
-								mtk_aes_xmit
+				aes->flags |= AES_FLAGS_BUSY	//如果能dequeue出来一个
+				aes->areq = areq
+				aes->ctx = ctx
+				ctx->start()		//回调mtk_aes_start
+					aes->flags = (aes->flags & AES_FLAGS_BUSY) | rctx->mode
+					aes->resume = mtk_aes_transfer_complete	//设置resume回调
+					mtk_aes_dma(cryp, aes, req->src, req->dst, req->cryptlen)	
+						aes->total = req->cryptlen
+						aes->src.sg = req->src
+						aes->dst.sg = req->dst
+						aes->real_dst = req->dst
+						mtk_aes_check_aligned
+						mtk_aes_info_init
+						mtk_aes_map
+							dma_map_sg
+							mtk_aes_xmit
 ```
 
 #### 2.6 一个加密完成
@@ -322,14 +331,14 @@ mtk_aes_irq
 
 
 
-### 3. spacc crypto api设计实现
+### 3. spacc crypto api实现记录
 
 > spacc-platform.c
 > spacc-aes.c
 
 #### 3.1 注册
 
-&emsp;&emsp;首先要说明一下，这里要基于原有的spacc sdk驱动包的基础上注册，但是有相应的修改。具体如下：还先加载elppdu.ko(pdu.c ...)、elpmem.ko(spacc_mem.c)或者直接编译进内核，然后用重新编写的spacc-platform.c替换掉elspacc.ko(spacc.c)，spacc-platform.c有很多直接拷贝的spacc.c也有一些要重新实现。比如获取平台设备资源和设置struct spacc_priv、struct spacc_device全部照搬（但不一定全部使用），tasklet和irq要重新实现，而且重新定义一个struct spacc_cryp，用来包含struct spacc_priv和新的内容。接下来的注册就从spacc-platform.c讲起。
+&emsp;&emsp;基于原有的spacc sdk驱动包的基础上注册，但是有相应的修改。具体如下：还先加载elppdu.ko(pdu.c ...)、elpmem.ko(spacc_mem.c)或者直接编译进内核，然后用重新编写的spacc-platform.c替换掉elspacc.ko(spacc.c)，spacc-platform.c有很多直接拷贝的spacc.c也有一些要重新实现。比如获取平台设备资源和设置struct spacc_priv、struct spacc_device全部照搬（但不一定全部使用），tasklet和irq要重新实现，而且重新定义一个struct spacc_cryp，用来包含struct spacc_priv和新的内容。接下来的注册就从spacc-platform.c讲起。
 
 ```c
 static struct platform_driver spacc_crypto_driver = {
@@ -343,23 +352,26 @@ static struct platform_driver spacc_crypto_driver = {
 module_platform_driver(spacc_crypto_driver);
 
 
-spacc_crypto_probe
+spacc_crypto_probe(struct platform_device *pdev)
 	struct spacc_priv *priv = devm_kzalloc();
 	struct spacc_cryp *cryp = devm_kzalloc();	
 	cryp->dev = &pdev->dev;				
 	cryp->priv = priv;					
 	platform_set_drvdata(pdev, cryp);
-	cryp->base = baseaddr;		
-	cryp->irq = irq;	
+	cryp->base = baseaddr;						//虚拟基地址
+	cryp->irq = irq;							//虚拟irq
 	spacc_init();							  //spacc硬件初始化
 	spacc_irq_glbl_disable(&priv->spacc);		//关闭spacc全局中断
 	spacc_cipher_record_alg_register(cryp);		
-		spacc_aes_record_alg_register()
-			spacc_aes_record_init()
+		spacc_aes_record_alg_register(cryp)
+			spacc_aes_record_init(cryp)
+				struct spacc_aes_rec *aesrec = &cryp->aes
+				aesrec->buf = __get_free_pages
+				aesrec->cryp = cryp
 				crypto_init_queue(&aes->queue, AES_QUEUE_SIZE);
 				tasklet_init(&aes->done_task, spacc_aes_done_task);
 				tasklet_init(&aes->queue_task, spacc_aes_queue_task);
-			spacc_aes_register_algs()
+			spacc_aes_register_algs
 				crypto_register_skcipher(spacc_aes_algs);             
 	devm_request_irq(spacc_crypto_irq);
 	spacc_irq_cmdx_disable(&priv->spacc, 0);	//关闭cmd0中断
@@ -390,7 +402,7 @@ static struct skcipher_alg spacc_aes_algs[] = {
 };
 ```
 
-#### 3.2 分配算法对象
+#### 3.2 分配设置算法对象
 
 ```c
 crypto_alloc_skcipher
@@ -404,48 +416,92 @@ crypto_alloc_skcipher
 				tfm->__crt_alg = alg			//绑定算法
 				frontend->init_tfm()			  //crypto_skcipher_init_tfm
 					alg->init					//spacc_aes_init_tfm
-						crypto_skcipher_set_reqsize(sizeof(struct spacc_aes_reqctx))
+						skcipher->reqsize = sizeof(struct spacc_aes_reqctx)
 						ctx->base.start = spacc_aes_start	//设置start回调
 ```
 
 #### 3.3 分配设置请求对象
 
-&emsp;&emsp;同2.3
+```c
+//分配
+skcipher_request_alloc(struct crypto_skcipher *tfm)
+	req = kmalloc(sizeof(struct skcipher_request) + tfm->reqsize)	
+	skcipher_request_set_tfm(req, tfm)	
+    	req->base.tfm = crypto_skcipher_tfm(tfm)
+//设置
+skcipher_request_set_crypt(req, src, dst, cryptlen, iv)
+```
 
 #### 3.4 设置秘钥
 
-&emsp;&emsp;同2.4
+```c
+crypto_skcipher_setkey
+	cipher->setkey 		//spacc_aes_setkey
+		ctx->keylen = keylen;
+		memcpy(ctx->key, key, keylen);
+```
 
 #### 3.5 启动一个加密
 
 ```c
-crypto_skcipher_encrypt
-	spacc_aes_cbc_encrypt		//crypto_skcipher_alg(tfm)->encrypt(req);
-		spacc_aes_crypt
-			spacc_aes_handle_queue
+crypto_skcipher_encrypt(struct skcipher_request *req)
+	spacc_aes_cbc_encrypt(req)	
+		spacc_aes_crypt(req, AES_FLAGS_ENCRYPT | AES_FLAGS_CBC)	
+			ctx->cryp = spacc_aes_find_dev
+			rctx->mode = AES_FLAGS_ENCRYPT | AES_FLAGS_CBC
+			spacc_aes_handle_queue(ctx->cryp, &req->base)
 				crypto_enqueue_request
 				crypto_dequeue_request
-					ctx->start()		//spacc_aes_start
-						aesrec->aes->resume = spacc_aes_transfer_complete;	//设置resume回调
-						spacc_aes_dma		
-							spacc_aes_check_aligned
-							spacc_aes_map_xmit			   //映射dma设置寄存器
-								dma_map_sg
-								spacc_aes_xmit
+				aesrec->flags |= AES_FLAGS_BUSY
+				aesrec->areq = areq
+				aesrec->ctx = ctx
+				ctx->start(cryp)	//cryp == ctx->cryp	//spacc_aes_start
+					aesrec->flags = (aesrec->flags & AES_FLAGS_BUSY) | rctx->mode
+					cryp->which_rec = 0
+					aesrec->aes->resume = spacc_aes_transfer_complete;	//设置resume回调
+					spacc_aes_dma(cryp, req->src, req->dst, req->cryptlen)
+						aesrec->total =  req->cryptlen
+						aesrec->src.sg = req->src
+						aesrec->dst.sg = req->dst
+						aesrec->real_dst = req->dst
+						spacc_aes_check_aligned
+						sg_copy_to_buffer	// if !src_aligned
+						sg_init_table		// if !src_aligned || !dst_aligned
+						sg_set_buf			// if !src_aligned || !dst_aligned
+						spacc_aes_map_xmit(cryp, aesrec, req->cryptlen + padlen)		    
+							enc_mode = rctx->mode & AES_FLAGS_CIPHER_MSK
+							enc_or_dec = !!(AES_FLAGS_ENCRYPT | rctx->mode)
+							spacc_open
+							spacc_write_context	
+							spacc_set_operation
+							spacc_set_key_exp	//if !enc_or_dec
+							dma_map_sg
+							spacc_aes_xmit(cryp, aesrec, len + padlen)	//len=req->cryptlen
+								pdu_ddt_init	
+								pdu_ddt_add
+								spacc_packet_enqueue_ddt
 ```
 
 #### 3.6 一个加密完成
 
 ```c
-spacc_crypto_irq
+spacc_crypto_irq(irq, cryp)
 	清中断
-	tasklet_schedule(&aesrec->done_task);		//spacc_aes_done_task
-		...			//dequeue packet, free ddt, unmap dma, close handle
-		aesrec->ctx->resume(cryp);	//spacc_aes_transfer_complete
-			spacc_aes_complete
+	tasklet_schedule(&aesrec->done_task)		//spacc_aes_done_task
+		spacc_packet_dequeue
+		pdu_ddt_free
+		dma_unmap_sg
+		spacc_aes_restore_sg	// if aligned
+		sg_copy_from_buffer		// if !dst_aligned
+		spacc_close
+		aesrec->ctx->resume(cryp)	//spacc_aes_transfer_complete
+			spacc_aes_complete(cryp, 0)
 				aesrec->flags &= ~AES_FLAGS_BUSY
 				aesrec->areq->complete(aesrec->areq, err)
 				tasklet_schedule(&aesrec->queue_task) 		//spacc_aes_queue_task
-					spacc_aes_handle_queue(cryp, NULL);                
+					spacc_aes_handle_queue(cryp, NULL)               
 ```
 
+#### 3.7 总结
+
+&emsp;&emsp;spacc的aes crypto api整体上的软件框架是参考mtk的，主要区别在于结合了spacc sdk的一些注册和硬件操作。注册过程保留了sdk中对struct spacc_priv以及其子结构spacc_device的设置，因为后续的硬件操作需要。硬件操作按照sdk方式操作，如启动加密作业中调用的spacc_open、spacc_write_context、spacc_set_operation、spacc_set_key_exp、pdu_ddt_init、pdu_ddt_add、spacc_packet_enqueue_ddt；以及加密作业完成中调用的spacc_packet_dequeue、pdu_ddt_free、spacc_close。通过使用这些函数大大减少了重新写代码操作寄存器带来的巨大的工作量，但是这些函数的使用方法要严格按照文档和sdk的说明来使用，最后在遵守了文档和sdk的规范之外还要将这些函数正确的融合进linux crypto子系统之中。
