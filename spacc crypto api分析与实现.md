@@ -4,7 +4,7 @@
 
 > atmel-aes.c
 
-#### 1.1 注册
+#### 1.1 注册算法
 
 ```c
 static int atmel_aes_probe(struct platform_device *pdev)
@@ -65,7 +65,7 @@ crypto_alloc_skcipher
 						ctx->base.start = atmel_aes_start	//
 ```
 
-#### 1.3 分配设置请求对象
+#### 1.3 分配设置请求
 
 ```c
 skcipher_request_alloc
@@ -207,7 +207,7 @@ atmel_aes_irq
 
 > mtk-platform.c mtk-aes.c
 
-#### 2.1 注册
+#### 2.1 注册算法
 
 ```c
 mtk_crypto_probe
@@ -263,7 +263,7 @@ crypto_alloc_skcipher
 						ctx->base.start = mtk_aes_start	//设置start回调
 ```
 
-#### 2.3 分配设置请求对象
+#### 2.3 分配设置请求
 
 ```c
 skcipher_request_alloc
@@ -336,7 +336,7 @@ mtk_aes_irq
 > spacc-platform.c
 > spacc-aes.c
 
-#### 3.1 注册
+#### 3.1 注册算法
 
 &emsp;&emsp;基于原有的spacc sdk驱动包的基础上注册，但是有相应的修改。具体如下：先将elppdu.ko(pdu.c ...)、elpmem.ko(spacc_mem.c)不做修改加载，然后将elspacc.ko(spacc.c)做修改后加载，它去掉了注册所做的事，只保留EXPORT_SYMBOL导出的函数，并增加spacc_init和spacc_fini的EXPORT_SYMBOL，因为后续加载的模块spacc-crypto.ko要使用。用重新编写的spacc-platform.c替换掉elspacc.ko(spacc.c)所做的注册的事，spacc-platform.c有很多直接拷贝的spacc.c也有一些要重新实现。比如获取平台设备资源和设置struct spacc_priv、struct spacc_device全部照搬（但不一定全部使用），tasklet和irq要重新实现，而且重新定义一个struct spacc_cryp，用来包含struct spacc_priv和新的内容。接下来的注册就从spacc-platform.c讲起。
 
@@ -405,12 +405,13 @@ static struct skcipher_alg spacc_aes_algs[] = {
 #### 3.2 分配设置算法对象
 
 ```c
+//分配对象通过回调自动触发设置算法对象
 crypto_alloc_skcipher
 	crypto_alloc_tfm
 		crypto_alloc_tfm_node
-			crypto_find_alg
+			alg = crypto_find_alg
 			crypto_create_tfm_node
-				alloc(sizeof(struct crypto_tfm) 
+				tfm = alloc(sizeof(struct crypto_tfm) 
                       	+ frontend->tfmsize 		//offsetof(struct crypto_skcipher, base)
                       	+ frontend->extsize(alg)	//sizeof(struct spacc_aes_ctx)
 				tfm->__crt_alg = alg			//绑定算法
@@ -420,16 +421,18 @@ crypto_alloc_skcipher
 						ctx->base.start = spacc_aes_start	//设置start回调
 ```
 
-#### 3.3 分配设置请求对象
+#### 3.3 分配设置请求
 
 ```c
-//分配
+//分配请求
 skcipher_request_alloc(struct crypto_skcipher *tfm)
 	req = kmalloc(sizeof(struct skcipher_request) + tfm->reqsize)	
 	skcipher_request_set_tfm(req, tfm)	
     	req->base.tfm = crypto_skcipher_tfm(tfm)
-//设置
+    
+//设置请求
 skcipher_request_set_crypt(req, src, dst, cryptlen, iv)
+skcipher_request_set_callback(req, flags, callbackfunc, callbackdata)    
 ```
 
 #### 3.4 设置秘钥
