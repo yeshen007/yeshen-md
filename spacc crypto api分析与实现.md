@@ -368,6 +368,7 @@ spacc_crypto_probe(struct platform_device *pdev)
 				struct spacc_aes_rec *aesrec = &cryp->aes
 				aesrec->buf = __get_free_pages
 				aesrec->cryp = cryp
+				spin_lock_init(&aesrec->lock);
 				crypto_init_queue(&aes->queue, AES_QUEUE_SIZE);
 				tasklet_init(&aes->done_task, spacc_aes_done_task);
 				tasklet_init(&aes->queue_task, spacc_aes_queue_task);
@@ -453,9 +454,9 @@ crypto_skcipher_encrypt(struct skcipher_request *req)
 			ctx->cryp = spacc_aes_find_dev
 			rctx->mode = AES_FLAGS_ENCRYPT | AES_FLAGS_CBC
 			spacc_aes_handle_queue(ctx->cryp, &req->base)
-				crypto_enqueue_request
-				crypto_dequeue_request
-				aesrec->flags |= AES_FLAGS_BUSY
+				crypto_enqueue_request		// if newreq
+				areq = crypto_dequeue_request	
+				aesrec->flags |= AES_FLAGS_BUSY	//if areq exist
 				aesrec->areq = areq
 				aesrec->ctx = ctx
 				ctx->start(cryp)	//cryp == ctx->cryp	//spacc_aes_start
@@ -477,7 +478,7 @@ crypto_skcipher_encrypt(struct skcipher_request *req)
 							spacc_open
 							spacc_write_context	
 							spacc_set_operation
-							spacc_set_key_exp	//if !enc_or_dec
+							spacc_set_key_exp	//if dec
 							dma_map_sg
 							spacc_aes_xmit(cryp, aesrec, len + padlen)	//len=req->cryptlen
 								pdu_ddt_init	
