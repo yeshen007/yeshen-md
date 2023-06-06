@@ -103,7 +103,8 @@ config_haps /home/syshaps/workspace/storage/yqwu/haps_projects/confpro_ws_202303
 ./ddr_writing rootfs_haps.cpio 0x440000000
 ./write_csr 0x403000000 0x20221109
     
-//最后查看215串口打印和操作加载驱动模块或者测试用例   
+/* 最后查看215串口打印和操作加载驱动模块或者测试用例 */
+等好一会
 ```
 
 #### 4. misc
@@ -124,6 +125,7 @@ cd /home/syshaps/workspace/zye/haps/cpio_mnt
 cpio -iv < ../bin/rootfs_haps.cpio		//解压到目录
 ...		//增删改
 find . | cpio --quiet -o -H newc > ../bin/rootfs_haps_new.cpio	//重新打包
+参考HAPS_UG.pdf更改bass-haps.dts重新编译		//因为文件系统变化了
 
 /* 查看交叉编译工具aarch64-none-linux-gnu-gcc的头文件库文件默认搜素路径 */
 aarch64-none-linux-gnu-gcc -print-sysroot
