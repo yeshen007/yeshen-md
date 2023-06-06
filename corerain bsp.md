@@ -63,7 +63,7 @@ yes!00
 /* 配置环境变量 */
 source  /opt/arm.env
 
-/* 配置编译内核,得到arch/arm64/boot/Image */
+/* 配置编译内核和设备树,得到arch/arm64/boot/Image和arch/arm64/boot/dts/corerain/bass-haps.dtb */
 cd /home/zye/kernel
 make ARCH=arm64 CROSS_COMPILE=aarch64-none-linux-gnu- bass_linux_mini_defconfig
 make ARCH=arm64 CROSS_COMPILE=aarch64-none-linux-gnu- menuconfig
@@ -93,14 +93,14 @@ cd /home/syshaps/workspace/zye/haps/bin
 scp zye@192.168.11.247:/home/zye/kernel/arch/arm64/boot/dts/corerain/bass-haps.dtb .
 scp zye@192.168.11.247:/home/zye/kernel/arch/arm64/boot/Image .   
 
-/* 配置模拟硬件(./zye_config_a55) */
+/* 配置模拟硬件(./zye_config) */
 config_haps /home/syshaps/workspace/storage/yqwu/haps_projects/confpro_ws_20230325_4boot_20230412/designs
 
 /* 将镜像写入ddr并启动(./run.sh) */
 ./ddr_writing bl31.bin 0x400000000
 ./ddr_writing bass-haps.dtb 0x400100000
 ./ddr_writing Image 0x400200000
-./ddr_writing rootfs_haps.cpio 0x440000000
+./ddr_writing xxx.cpio 0x440000000
 ./write_csr 0x403000000 0x20221109
     
 /* 最后查看215串口打印和操作加载驱动模块或者测试用例 */
@@ -125,7 +125,7 @@ cd /home/syshaps/workspace/zye/haps/cpio_mnt
 cpio -iv < ../bin/rootfs_haps.cpio		//解压到目录
 ...		//增删改
 find . | cpio --quiet -o -H newc > ../bin/rootfs_haps_new.cpio	//重新打包
-参考HAPS_UG.pdf更改bass-haps.dts重新编译		//因为文件系统变化了
+参考HAPS_UG.pdf更改bass-haps.dts重新编译内核和设备树		//如果文件系统大小变化了
 
 /* 查看交叉编译工具aarch64-none-linux-gnu-gcc的头文件库文件默认搜素路径 */
 aarch64-none-linux-gnu-gcc -print-sysroot
