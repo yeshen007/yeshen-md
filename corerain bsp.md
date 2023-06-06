@@ -13,6 +13,12 @@ account: syshaps
 passwd: admin
 登录方式：通过mobaxterm或类似工具ssh连接
 
+/* haps串口 */
+addr: 192.168.11.215
+account: corerain
+passwd: 123456
+登录方式：通过mobaxterm或类似工具ssh连接
+
 /* 开发服务器 */
 addr: 192.168.11.247
 account: zye
@@ -57,7 +63,7 @@ yes!00
 /* 配置环境变量 */
 source  /opt/arm.env
 
-/* 配置编译内核 */
+/* 配置编译内核,得到arch/arm64/boot/Image */
 cd /home/zye/kernel
 make ARCH=arm64 CROSS_COMPILE=aarch64-none-linux-gnu- bass_linux_mini_defconfig
 make ARCH=arm64 CROSS_COMPILE=aarch64-none-linux-gnu- menuconfig
@@ -77,15 +83,18 @@ path_to_your_cpiofs/usr/local/spacc
 #### 3. 仿真运行
 
 ```c
-/* 切换到haps服务器 */
+/* 先登录215链接串口,216上跑工程在215上打印 */
+sudo minicom
+
+/* 切换到216 haps服务器 */
 cd /home/syshaps/workspace/zye/haps/bin
 
-/* scp拷贝247服务器编译好的镜像到该目录 */
+/* scp拷贝247服务器编译好的镜像到该目录(如果重新编译内核和设备树的话) */
 scp zye@192.168.11.247:/home/zye/kernel/arch/arm64/boot/dts/corerain/bass-haps.dtb .
 scp zye@192.168.11.247:/home/zye/kernel/arch/arm64/boot/Image .   
 
 /* 配置模拟硬件(./zye_config_a55) */
-config /home/syshaps/workspace/storage/yqwu/haps_projects/confpro_ws_20230325_4boot_20230412/designs
+config_haps /home/syshaps/workspace/storage/yqwu/haps_projects/confpro_ws_20230325_4boot_20230412/designs
 
 /* 将镜像写入ddr并启动(./run.sh) */
 ./ddr_writing bl31.bin 0x400000000
@@ -94,8 +103,7 @@ config /home/syshaps/workspace/storage/yqwu/haps_projects/confpro_ws_20230325_4b
 ./ddr_writing rootfs_haps.cpio 0x440000000
 ./write_csr 0x403000000 0x20221109
     
-/* 连接串口看打印 */    
-sudo minicom    
+//最后查看215串口打印和操作加载驱动模块或者测试用例   
 ```
 
 #### 4. misc

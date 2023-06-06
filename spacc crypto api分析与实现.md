@@ -492,6 +492,7 @@ crypto_skcipher_encrypt(struct skcipher_request *req)
 spacc_crypto_irq(irq, cryp)
 	清中断
 	tasklet_schedule(&aesrec->done_task)		//spacc_aes_done_task
+		spacc_pop_packets
 		spacc_packet_dequeue
 		pdu_ddt_free
 		dma_unmap_sg
