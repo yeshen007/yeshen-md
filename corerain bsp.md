@@ -122,8 +122,9 @@ config_haps /home/syshaps/workspace/storage/yqwu/haps_projects/confpro_ws_202303
     
 /* 拷贝文件到hpas文件系统 */    
 cd /home/syshaps/workspace/zye/haps/cpio_mnt
-cpio -iv < ../bin/rootfs_haps.cpio		//解压到目录
+cpio -iv < ../bin/rootfs_haps_crypto.cpio		//解压到目录
 ...		//增删改
+注释掉/etc/inittab	#ttyS1::respawn:/sbin/getty...	//目前不知道有啥用
 find . | cpio --quiet -o -H newc > ../bin/rootfs_haps_new.cpio	//重新打包
 参考HAPS_UG.pdf更改bass-haps.dts重新编译内核和设备树		//如果文件系统大小变化了
 

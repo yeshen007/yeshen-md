@@ -1,10 +1,62 @@
 ## <center>spacc crypto api分析与实现</center>
 
-### 1. atmel加速器代码分析记录
+###  1. linux crypto api概括
+
+#### 1.1 数据结构
+
+![](draw\cryptoapiarch.drawio.svg)
+
+##### (1) crypto_alg
+
+&emsp;&emsp;表示一个注册到内核crypto框架的**算法**。主要包含算法在整个注册被使用期间都不会改变的属性和回调函数，如名字，blocksize，算法实例初始化函数cra_init等。
+
+##### (2) crypto_tfm
+
+&emsp;&emsp;表示**算法实例**，当要使用某种算法执行加解密任务时，需要创建一个crypto_tfm结构体。除了包含表示算法的固定属性crypto_alg外，crypto_tfm还包括本次任务特定的上下文信息，比如spacc_aes_ctx中的秘钥。
+
+##### (3) crypto_async_request
+
+&emsp;&emsp;表示加解密任务中的一个**请求**(单次子任务)，主要包含crypto_tfm和请求完成回调函数。
+
+##### (4) skcipher_alg
+
+&emsp;&emsp;表示**对称加密算法**，除了包含crypto_alg表示的基础属性和回调函数之外还包含一些对称加密特有的属性和回调函数。
+
+##### (5) crypto_skcipher
+
+&emsp;&emsp;表示**对称加密算法实例**，除了包含crypto_tfm之外还包括该算法类型实例特有的属性。
+
+##### (6) skcipher_request
+
+&emsp;&emsp;表示一个**对称加解密的请求**，除了包含crypto_async_request外还包括对称加密类型相关的属性比如加密长度和源数据，目的数据，初始化向量，以及驱动自定义的结构。
+
+##### (7) spacc_aes_ctx
+
+&emsp;&emsp;表示在一整个加解密任务过程中需要保存的特定驱动数据。
+
+##### (8) spacc_aes_reqctx
+
+&emsp;&emsp;表示在一个请求处理过程中需要保存的特定驱动数据。
+
+#### 1.2 内核加解密流程
+
+##### (1) 分配设置算法实例
+
+##### (2) 分配设置请求
+
+##### (3) 设置秘钥
+
+##### (4) 启动请求
+
+##### (5) 请求完成
+
+
+
+### 2. atmel加速器代码分析记录
 
 > atmel-aes.c
 
-#### 1.1 注册算法
+#### 2.1 注册算法
 
 ```c
 static int atmel_aes_probe(struct platform_device *pdev)
@@ -47,7 +99,7 @@ static struct skcipher_alg aes_algs[] = {
 };
 ```
 
-#### 1.2 分配设置算法对象
+#### 2.2 分配设置算法实例
 
 ```c
 crypto_alloc_skcipher
@@ -65,7 +117,7 @@ crypto_alloc_skcipher
 						ctx->base.start = atmel_aes_start	//
 ```
 
-#### 1.3 分配设置请求
+#### 2.3 分配设置请求
 
 ```c
 skcipher_request_alloc
@@ -75,7 +127,7 @@ skcipher_request_alloc
 skcipher_request_set_crypt(req, src, dst, cryptlen, iv)
 ```
 
-#### 1.4 设置秘钥
+#### 2.4 设置秘钥
 
 ```c
 crypto_skcipher_setkey
@@ -93,7 +145,7 @@ static int atmel_aes_setkey(struct crypto_skcipher *tfm, const u8 *key,
 }
 ```
 
-#### 1.5 启动一个加密
+#### 2.5 启动一个加密
 
 ```c
 crypto_skcipher_encrypt
@@ -165,7 +217,7 @@ atmel_aes_dma_start
 	启动加密和传输	//->
 ```
 
-#### 1.6 一个加密完成
+#### 2.6 一个加密完成
 
 ```c
 atmel_aes_irq
@@ -179,7 +231,7 @@ atmel_aes_irq
             		atmel_aes_handle_queue(&aes_dd，NULL)	//注意NULL
 ```
 
-#### 1.7总结
+#### 2.7总结
 
 ```c
 //1.注册
@@ -203,11 +255,11 @@ atmel_aes_irq
 
 
 
-### 2. mtk加速器代码分析记录
+### 3. mtk加速器代码分析记录
 
 > mtk-platform.c mtk-aes.c
 
-#### 2.1 注册算法
+#### 3.1 注册算法
 
 ```c
 mtk_crypto_probe
@@ -245,7 +297,7 @@ static struct skcipher_alg aes_algs[] = {
 };
 ```
 
-#### 2.2 分配设置算法对象
+#### 3.2 分配设置算法实例
 
 ```c
 crypto_alloc_skcipher
@@ -263,7 +315,7 @@ crypto_alloc_skcipher
 						ctx->base.start = mtk_aes_start	//设置start回调
 ```
 
-#### 2.3 分配设置请求
+#### 3.3 分配设置请求
 
 ```c
 skcipher_request_alloc
@@ -273,7 +325,7 @@ skcipher_request_alloc
 skcipher_request_set_crypt(req, src, dst, cryptlen, iv)
 ```
 
-#### 2.4 设置秘钥
+#### 3.4 设置秘钥
 
 ```c
 crypto_skcipher_setkey
@@ -282,7 +334,7 @@ crypto_skcipher_setkey
 		memcpy(ctx->key, key, keylen);
 ```
 
-#### 2.5 启动一个加密
+#### 3.5 启动一个加密
 
 ```c
 crypto_skcipher_encrypt
@@ -310,7 +362,7 @@ crypto_skcipher_encrypt
 							mtk_aes_xmit
 ```
 
-#### 2.6 一个加密完成
+#### 3.6 一个加密完成
 
 ```c
 mtk_aes_irq
@@ -325,18 +377,18 @@ mtk_aes_irq
 					mtk_aes_handle_queue(aes->cryp, aes->id, NULL)	//注意NULL
 ```
 
-#### 2.7 总结
+#### 3.7 总结
 
 &emsp;&emsp;mtk和atmel实现框架基本是一致的，因为mtk是借鉴atmel的，唯一重要的区别是第5步启动一个加密的最后的dma任务设置启动阶段。atmel使用的是标准的linux dma api，而mtk是手动设置dma，除此之外他们两个基本一样。我们的dma任务设置启动要参考mtk手动设置，因为要使用内核dma api还要花费大量的精力再去对接内核dma框架，可以留到以后考虑。
 
 
 
-### 3. spacc crypto api实现记录
+### 4. spacc crypto api实现记录
 
 > spacc-platform.c
 > spacc-aes.c
 
-#### 3.1 注册算法
+#### 4.1 注册算法
 
 &emsp;&emsp;基于原有的spacc sdk驱动包的基础上注册，但是有相应的修改。具体如下：先将elppdu.ko(pdu.c ...)、elpmem.ko(spacc_mem.c)不做修改加载，然后将elspacc.ko(spacc.c)做修改后加载，它去掉了注册所做的事，只保留EXPORT_SYMBOL导出的函数，并增加spacc_init和spacc_fini的EXPORT_SYMBOL，因为后续加载的模块spacc-crypto.ko要使用。用重新编写的spacc-platform.c替换掉elspacc.ko(spacc.c)所做的注册的事，spacc-platform.c有很多直接拷贝的spacc.c也有一些要重新实现。比如获取平台设备资源和设置struct spacc_priv、struct spacc_device全部照搬（但不一定全部使用），tasklet和irq要重新实现，而且重新定义一个struct spacc_cryp，用来包含struct spacc_priv和新的内容。接下来的注册就从spacc-platform.c讲起。
 
@@ -403,7 +455,7 @@ static struct skcipher_alg spacc_aes_algs[] = {
 };
 ```
 
-#### 3.2 分配设置算法对象
+#### 4.2 分配设置算法实例
 
 ```c
 //分配对象通过回调自动触发设置算法对象
@@ -422,7 +474,7 @@ crypto_alloc_skcipher
 						ctx->base.start = spacc_aes_start	//设置start回调
 ```
 
-#### 3.3 分配设置请求
+#### 4.3 分配设置请求
 
 ```c
 //分配请求
@@ -436,7 +488,7 @@ skcipher_request_set_crypt(req, src, dst, cryptlen, iv)
 skcipher_request_set_callback(req, flags, callbackfunc, callbackdata)    
 ```
 
-#### 3.4 设置秘钥
+#### 4.4 设置秘钥
 
 ```c
 crypto_skcipher_setkey
@@ -445,7 +497,7 @@ crypto_skcipher_setkey
 		memcpy(ctx->key, key, keylen);
 ```
 
-#### 3.5 启动一个加密
+#### 4.5 启动一个加密
 
 ```c
 crypto_skcipher_encrypt(struct skcipher_request *req)
@@ -486,7 +538,7 @@ crypto_skcipher_encrypt(struct skcipher_request *req)
 								spacc_packet_enqueue_ddt
 ```
 
-#### 3.6 一个加密完成
+#### 4.6 一个加密完成
 
 ```c
 spacc_crypto_irq(irq, cryp)
@@ -507,6 +559,6 @@ spacc_crypto_irq(irq, cryp)
 					spacc_aes_handle_queue(cryp, NULL)               
 ```
 
-#### 3.7 总结
+#### 4.7 总结
 
 &emsp;&emsp;spacc的aes crypto api整体上的软件框架是参考mtk的，主要区别在于结合了spacc sdk的一些注册和硬件操作。注册过程保留了sdk中对struct spacc_priv以及其子结构spacc_device的设置，因为后续的硬件操作需要。硬件操作按照sdk方式操作，如启动加密作业中调用的spacc_open、spacc_write_context、spacc_set_operation、spacc_set_key_exp、pdu_ddt_init、pdu_ddt_add、spacc_packet_enqueue_ddt；以及加密作业完成中调用的spacc_packet_dequeue、pdu_ddt_free、spacc_close。通过使用这些函数大大减少了重新写代码操作寄存器带来的巨大的工作量，但是这些函数的使用方法要严格按照文档和sdk的说明来使用，最后在遵守了文档和sdk的规范之外还要将这些函数正确的融合进linux crypto子系统之中。
