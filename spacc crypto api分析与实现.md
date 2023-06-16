@@ -2,7 +2,9 @@
 
 ###  1. linux crypto api概括
 
-#### 1.1 数据结构
+&emsp;&emsp;linux crypto api提供一套统一的api给内核注册和使用算法。注册算法是将硬件操作函数(加解密，设置密钥等)设置到crypo框架对应结构体，将暂存上下文信息(除了处理的数据之外的信息如key，iv，加解密模式等)的数据结构设置到crypo框架对应结构体，最后通过内核的函数注册到内核crypto系统。使用crypo框架提供的api处理数据主要有两步：设置上下文信息，处理数据。设置上下文信息一般会先保存在软件的数据结构中，最后在处理数据阶段再从数据结构取出设置到硬件；处理数据主要是设置提交请求，请求包含数据源和数据目的(根据算法类型的不同可能还包含部分上下文信息)，提交的请求通常不会马上使用硬件处理，会先保存在软件维护的队列中，当通过某种方式(通常是中断)知道硬件可用时再从队列取出一个请求给硬件处理。下文以对称算法类型来说
+
+#### 1.1 注册主要数据结构
 
 ![](draw\cryptoapiarch.drawio.svg)
 
@@ -38,17 +40,27 @@
 
 &emsp;&emsp;表示在一个请求处理过程中需要保存的特定驱动数据。
 
-#### 1.2 内核加解密流程
+#### 1.2 crypto api使用算法流程
 
 ##### (1) 分配设置算法实例
 
+&emsp;&emsp;skcipher = crypto_alloc_skcipher(alg_name, ...)得到一个对称算法alg_name的实例对象，接下来的api调用都需要它。
+
 ##### (2) 分配设置请求
+
+&emsp;&emsp;req = skcipher_request_alloc(skcipher, ...)得到一个请求，然后再根据数据源地址、数据目的地址和初始化向量设置请求。
 
 ##### (3) 设置秘钥
 
-##### (4) 启动请求
+&emsp;&emsp;crypto_skcipher_setkey(skcipher, key, keylen)设置密钥。
+
+##### (4) 请求处理
+
+&emsp;&emsp;crypto_skcipher_encrypt(req)提交请求，请求通常先放入队列，是否会直接处理看硬件状态和队列状态。
 
 ##### (5) 请求完成
+
+&emsp;&emsp;请求完成一般触发中断，通常在中断上半部清中断，在下半部继续处理剩下的请求。
 
 
 
@@ -383,7 +395,7 @@ mtk_aes_irq
 
 
 
-### 4. spacc crypto api实现记录
+### 4. spacc cryptoapi驱动实现
 
 > spacc-platform.c
 > spacc-aes.c
@@ -562,3 +574,127 @@ spacc_crypto_irq(irq, cryp)
 #### 4.7 总结
 
 &emsp;&emsp;spacc的aes crypto api整体上的软件框架是参考mtk的，主要区别在于结合了spacc sdk的一些注册和硬件操作。注册过程保留了sdk中对struct spacc_priv以及其子结构spacc_device的设置，因为后续的硬件操作需要。硬件操作按照sdk方式操作，如启动加密作业中调用的spacc_open、spacc_write_context、spacc_set_operation、spacc_set_key_exp、pdu_ddt_init、pdu_ddt_add、spacc_packet_enqueue_ddt；以及加密作业完成中调用的spacc_packet_dequeue、pdu_ddt_free、spacc_close。通过使用这些函数大大减少了重新写代码操作寄存器带来的巨大的工作量，但是这些函数的使用方法要严格按照文档和sdk的说明来使用，最后在遵守了文档和sdk的规范之外还要将这些函数正确的融合进linux crypto子系统之中。
+
+
+
+### 5.  spacc cryptoapi驱动编译
+
+&emsp;&emsp;spacc cryptoapi驱动目前只有spacc-platform.c、spacc-platform.h、spacc-aes.c三个代码源文件，以后会根据功能新增或改动。这些文件会编译得到一个spacc-crypto.ko驱动模块。这三个源文件是加入spacc sdk中和其他模块以及测试程序一起编译的。下面就是讲如何将spacc cryptoapi文件加入sdk和编译的过程。
+
+#### 5.1 下载和修改sdk
+
+&emsp;&emsp;首先从公司gitlab下载sdk到247中，比如我的路径是/home/zye/spacc。如下：
+
+```c
+[zye@cr2 spacc]$ pwd
+/home/zye/spacc
+
+[zye@cr2 spacc]$ ls
+bin  doc  Makefile  Makefile.barespacc  README.TXT  src
+```
+
+&emsp;&emsp;然后要根据自己下载的路径修改以下两个地方：
+
+```c
+//   src/pdu/linux/kernel/Makefile
+#KERNELDIR ?= XXXXXXXXXXXXXXXXXXXXXXXXXX
+KERNELDIR ?= /home/zye/kernel
+
+//   src/core/kernel/Makefile
+#KERNELDIR ?= XXXXXXXXXXXXXXXXXXXXXXXXXX
+KERNELDIR ?= /home/zye/kernel
+```
+
+#### 5.2 将spacc cryptoapi合入sdk
+
+&emsp;&emsp;首先spacc-platform.c、spacc-platform.h、spacc-aes.c放入src/core/kernel。  
+&emsp;&emsp;然后修改src/core/kernel/spacc.c如下，将必要的工作放到spacc-platform.c中，同时要对其他模块导出spacc_init和spacc_fini这样spacc-platform.c才能使用。
+
+```c
+static int __init spacc_mod_init (void)
+{
+   int err = 0;
+#if 0
+   err = misc_register(&spaccirq_device);
+   if (err) {
+      return err;
+   }
+
+   err = platform_driver_register(&spacc_driver);
+   if (err) {
+      misc_deregister(&spaccirq_device);
+   }
+#endif   
+   return err;
+}
+
+static void __exit spacc_mod_exit (void)
+{
+#if 0
+   misc_deregister (&spaccirq_device);
+   platform_driver_unregister(&spacc_driver);
+#endif   
+}
+
+...
+
+EXPORT_SYMBOL (spacc_ctx_request);
+EXPORT_SYMBOL (spacc_ctx_release);
+
+//新加给spacc-crypto
+EXPORT_SYMBOL (spacc_init);
+EXPORT_SYMBOL (spacc_fini);
+
+module_param(spacc_endian, int, 0);
+MODULE_PARM_DESC(spacc_endian, "Endianess of data transfers (0==little)");
+EXPORT_SYMBOL(spacc_endian);
+
+...
+```
+
+
+&emsp;&emsp;然后修改src/core/kernel/Makefile如下：
+
+```c
+...
+#obj-m += elpspacccrypt.o
+#elpspacccrypt-objs := cryptoapi.o cryptoapi-ahash.o  cryptoapi-aead.o
+
+//这两行是新加
+obj-m += spacc-crypto.o
+spacc-crypto-objs := spacc-platform.o spacc-aes.o
+
+ccflags-$(CONFIG_SPACC_DEBUG) := -DDEBUG
+...
+```
+
+&emsp;&emsp;然后修改bin/load.sh和/bin/unload.sh如下：
+
+```c
+//   bin/load.sh
+#!/bin/bash
+insmod elppdu.ko
+insmod elpmem.ko
+insmod elpspacc.ko
+insmod spacc-crypto.ko
+
+//   bin/unload.sh
+#!/bin/bash
+for f in spacc-crypto.ko elpspacc.ko elpmem.ko elppdu.ko; do
+   if [ -e $f ]; then rmmod $f; fi
+done
+```
+
+&emsp;&emsp;最后就可以编译和拷贝了：
+
+```c
+//编译
+source /opt/arm.env
+cd /home/zye/spacc
+make clean
+make
+
+//拷贝编译得到的模块和测试程序到根文件系统cpio镜像中
+将/home/zye/spacc/bin目录的编译得到的文件拷贝到解压的cpio的usr/local/spacc中
+```
+
