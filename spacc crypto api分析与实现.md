@@ -2,9 +2,10 @@
 
 ###  1. linux crypto api概括
 
-&emsp;&emsp;linux crypto api提供一套统一的api给内核注册和使用算法。注册算法是将硬件操作函数(加解密，设置密钥等)设置到crypo框架对应结构体，将暂存上下文信息(除了处理的数据之外的信息如key，iv，加解密模式等)的数据结构设置到crypo框架对应结构体，最后通过内核的函数注册到内核crypto系统。使用crypo框架提供的api处理数据主要有两步：设置上下文信息，处理数据。设置上下文信息一般会先保存在软件的数据结构中，最后在处理数据阶段再从数据结构取出设置到硬件；处理数据主要是设置提交请求，请求包含数据源和数据目的(根据算法类型的不同可能还包含部分上下文信息)，提交的请求通常不会马上使用硬件处理，会先保存在软件维护的队列中，当通过某种方式(通常是中断)知道硬件可用时再从队列取出一个请求给硬件处理。下文以对称算法类型来说
+&emsp;&emsp;linux crypto api提供一套统一的api给内核注册和使用加解密、hash和解压缩算法。注册算法是将硬件操作函数(加解密，设置密钥等)设置到crypo框架对应结构体，将暂存上下文信息(除了处理的数据之外的信息如key，iv，加解密模式等)的数据结构设置到crypo框架对应结构体，最后通过内核的函数注册到内核crypto系统。使用crypo框架提供的api处理数据主要有两步：设置上下文信息，处理数据。设置上下文信息一般会先保存在软件的数据结构中，最后在处理数据阶段再从数据结构取出设置到硬件；处理数据主要是设置提交请求，请求包含数据源和数据目的(根据算法类型的不同可能还包含部分上下文信息)，提交的请求通常不会马上使用硬件处理，会先保存在软件维护的队列中，当通过某种方式(通常是中断)知道硬件可用时再从队列取出一个请求给硬件处理。  
+&emsp;&emsp;目前只实现aes-cbc模式的对称加解密，下文的分析总结以aes对称加解密作为示范。
 
-#### 1.1 注册主要数据结构
+#### 1.1 主要数据结构
 
 ![](draw\cryptoapiarch.drawio.svg)
 
@@ -34,31 +35,35 @@
 
 ##### (7) spacc_aes_ctx
 
-&emsp;&emsp;表示在一整个加解密任务过程中需要保存的特定驱动数据。
+&emsp;&emsp;表示在一整个加解密任务过程中需要保存的特定驱动数据，在我的实现中保存密钥和其他需要的数据和函数。
 
 ##### (8) spacc_aes_reqctx
 
-&emsp;&emsp;表示在一个请求处理过程中需要保存的特定驱动数据。
+&emsp;&emsp;表示在一个请求处理过程中需要保存的特定驱动数据，在我的实现中保存加解密的模式。
 
-#### 1.2 crypto api使用算法流程
+#### 1.2 算法注册使用流程
 
-##### (1) 分配设置算法实例
+##### (1) 注册算法
+
+&emsp;&emsp;通过crypto_register_skcipher(struct skcipher_alg *alg)函数将已经设置好的算法alg注册到内核。
+
+##### (2) 分配设置算法实例
 
 &emsp;&emsp;skcipher = crypto_alloc_skcipher(alg_name, ...)得到一个对称算法alg_name的实例对象，接下来的api调用都需要它。
 
-##### (2) 分配设置请求
+##### (3) 分配设置请求
 
 &emsp;&emsp;req = skcipher_request_alloc(skcipher, ...)得到一个请求，然后再根据数据源地址、数据目的地址和初始化向量设置请求。
 
-##### (3) 设置秘钥
+##### (4) 设置秘钥
 
 &emsp;&emsp;crypto_skcipher_setkey(skcipher, key, keylen)设置密钥。
 
-##### (4) 请求处理
+##### (5) 请求处理
 
 &emsp;&emsp;crypto_skcipher_encrypt(req)提交请求，请求通常先放入队列，是否会直接处理看硬件状态和队列状态。
 
-##### (5) 请求完成
+##### (6) 请求完成
 
 &emsp;&emsp;请求完成一般触发中断，通常在中断上半部清中断，在下半部继续处理剩下的请求。
 
@@ -157,7 +162,7 @@ static int atmel_aes_setkey(struct crypto_skcipher *tfm, const u8 *key,
 }
 ```
 
-#### 2.5 启动一个加密
+#### 2.5 请求处理
 
 ```c
 crypto_skcipher_encrypt
@@ -229,7 +234,7 @@ atmel_aes_dma_start
 	启动加密和传输	//->
 ```
 
-#### 2.6 一个加密完成
+#### 2.6 请求完成
 
 ```c
 atmel_aes_irq
@@ -346,7 +351,7 @@ crypto_skcipher_setkey
 		memcpy(ctx->key, key, keylen);
 ```
 
-#### 3.5 启动一个加密
+#### 3.5 请求处理
 
 ```c
 crypto_skcipher_encrypt
@@ -374,7 +379,7 @@ crypto_skcipher_encrypt
 							mtk_aes_xmit
 ```
 
-#### 3.6 一个加密完成
+#### 3.6 请求完成
 
 ```c
 mtk_aes_irq
@@ -509,7 +514,7 @@ crypto_skcipher_setkey
 		memcpy(ctx->key, key, keylen);
 ```
 
-#### 4.5 启动一个加密
+#### 4.5 请求处理
 
 ```c
 crypto_skcipher_encrypt(struct skcipher_request *req)
@@ -550,7 +555,7 @@ crypto_skcipher_encrypt(struct skcipher_request *req)
 								spacc_packet_enqueue_ddt
 ```
 
-#### 4.6 一个加密完成
+#### 4.6 请求完成
 
 ```c
 spacc_crypto_irq(irq, cryp)
@@ -607,7 +612,39 @@ KERNELDIR ?= /home/zye/kernel
 
 #### 5.2 将spacc cryptoapi合入sdk
 
-&emsp;&emsp;首先spacc-platform.c、spacc-platform.h、spacc-aes.c放入src/core/kernel。  
+&emsp;&emsp;首先spacc-platform.c、spacc-platform.h、spacc-aes.c放入src/core/kernel。   
+&emsp;&emsp;然后修改src/pdu/linux/kernel/spacc_mem.c如下，更改spacc访问的ddr地址重映射和增加spacc时钟复位。
+
+```c
+...
+#define SPACC_REMAP_SET 	  0x4
+//#define SPACC_REMAP_SET 	  0xc
+...
+/* 复位设置spacc时钟 */
+void __iomem *prcm_map = NULL;
+u32 reg;
+
+prcm_map = ioremap(0x020a0000, 0x10000);
+if (prcm_map == NULL) {
+    pr_err("Can't map prcm.\n");
+    return -1;
+}
+
+reg = pdu_io_read32(prcm_map + 0xd0);
+reg |= (1<<26);
+pdu_io_write32(prcm_map + 0xd0, reg);
+
+reg = pdu_io_read32(prcm_map + 0x06e0);
+reg &= ~(1<<3);
+pdu_io_write32(prcm_map + 0x06e0, reg);
+
+iounmap(prcm_map);
+pr_info("Spacc clock reset done.\n"); 
+
+rc = spdu_init(vex_baseaddr, &info);	
+...
+```
+
 &emsp;&emsp;然后修改src/core/kernel/spacc.c如下，将必要的工作放到spacc-platform.c中，同时要对其他模块导出spacc_init和spacc_fini这样spacc-platform.c才能使用。
 
 ```c

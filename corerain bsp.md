@@ -90,8 +90,8 @@ sudo minicom
 cd /home/syshaps/workspace/zye/haps/bin
 
 /* scp拷贝247服务器编译好的镜像到该目录(如果重新编译内核和设备树的话) */
-scp zye@192.168.11.247:/home/zye/kernel/arch/arm64/boot/dts/corerain/bass-haps.dtb .
-scp zye@192.168.11.247:/home/zye/kernel/arch/arm64/boot/Image .   
+scp zye@192.168.11.247:/home/zye/kernel/arch/arm64/boot/dts/corerain/bass-haps.dtb XX
+scp zye@192.168.11.247:/home/zye/kernel/arch/arm64/boot/Image XX
 
 /* 配置模拟硬件(./zye_config) */
 config_haps /home/syshaps/workspace/storage/yqwu/haps_projects/confpro_ws_20230325_4boot_20230412/designs
@@ -130,5 +130,14 @@ find . | cpio --quiet -o -H newc > ../bin/rootfs_haps_new.cpio	//重新打包
 
 /* 查看交叉编译工具aarch64-none-linux-gnu-gcc的头文件库文件默认搜素路径 */
 aarch64-none-linux-gnu-gcc -print-sysroot
+
+/* arm和216传送文件 */
+//arm收216发
+./soc_trans_receiver USB
+./usb_trans_sender 0x80000000 file/dir
+
+//216收arm发
+./usb_trans_receiver 0x80000000
+./soc_trans_sender USB file/dir
 ```
 
