@@ -3,7 +3,7 @@
 ###  1. linux crypto api概括
 
 &emsp;&emsp;linux crypto api提供一套统一的api给内核注册和使用加解密、hash和解压缩算法。注册算法是将硬件操作函数(加解密，设置密钥等)设置到crypo框架对应结构体，将暂存上下文信息(除了处理的数据之外的信息如key，iv，加解密模式等)的数据结构设置到crypo框架对应结构体，最后通过内核的函数注册到内核crypto系统。使用crypo框架提供的api处理数据主要有两步：设置上下文信息，处理数据。设置上下文信息一般会先保存在软件的数据结构中，最后在处理数据阶段再从数据结构取出设置到硬件；处理数据主要是设置提交请求，请求包含数据源和数据目的(根据算法类型的不同可能还包含部分上下文信息)，提交的请求通常不会马上使用硬件处理，会先保存在软件维护的队列中，当通过某种方式(通常是中断)知道硬件可用时再从队列取出一个请求给硬件处理。  
-&emsp;&emsp;目前只实现aes-cbc模式的对称加解密，下文的分析总结以aes对称加解密作为示范。
+&emsp;&emsp;目前只实现aes模式的对称加解密，下文的分析总结以aes对称加解密作为示范。
 
 #### 1.1 主要数据结构
 
@@ -429,6 +429,7 @@ spacc_crypto_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, cryp);
 	cryp->base = baseaddr;						//虚拟基地址
 	cryp->irq = irq;							//虚拟irq
+	cryp->which_rec = NO_ATIVE;					
 	spacc_init();							  //spacc硬件初始化
 	spacc_irq_glbl_disable(&priv->spacc);		//关闭spacc全局中断
 	spacc_cipher_record_alg_register(cryp);		
@@ -530,7 +531,7 @@ crypto_skcipher_encrypt(struct skcipher_request *req)
 				aesrec->ctx = ctx
 				ctx->start(cryp)	//cryp == ctx->cryp	//spacc_aes_start
 					aesrec->flags = (aesrec->flags & AES_FLAGS_BUSY) | rctx->mode
-					cryp->which_rec = 0
+					cryp->which_rec = AES_ATIVE
 					aesrec->aes->resume = spacc_aes_transfer_complete;	//设置resume回调
 					spacc_aes_dma(cryp, req->src, req->dst, req->cryptlen)
 						aesrec->total =  req->cryptlen
@@ -573,7 +574,8 @@ spacc_crypto_irq(irq, cryp)
 				aesrec->flags &= ~AES_FLAGS_BUSY
 				aesrec->areq->complete(aesrec->areq, err)
 				tasklet_schedule(&aesrec->queue_task) 		//spacc_aes_queue_task
-					spacc_aes_handle_queue(cryp, NULL)               
+					spacc_aes_handle_queue(cryp, NULL) 
+	cryp->which_rec = NO_ATIVE
 ```
 
 #### 4.7 总结
@@ -735,3 +737,72 @@ make
 将/home/zye/spacc/bin目录的编译得到的文件拷贝到解压的cpio的usr/local/spacc中
 ```
 
+
+
+### 6.  spacc 应用层访问方式
+
+&emsp;&emsp;内核cryptoapi框架不仅可为内核提供加解密服务，还可通过特定接口为用户态提供相应的加解密服务。为此内核专门为其实现了一种socket协议af_alg，该协议采用算法类型和算法名作为网络地址，且使用标准的socket编程接口。
+
+#### 6.1 直接操作af_alg协议套接字使用cryptoapi
+
+```c
+struct sockaddr_alg sa = {
+    .salg_family = AF_ALG,
+    .salg_type = "skcipher",			//算法类型
+    .salg_name = "spacc-cbc-aes"		//算法名
+};
+tfmfd = socket(AF_ALG, SOCK_SEQPACKET, 0);	
+	//alg_create(sock->ops = &alg_proto_ops)
+bind(tfmfd, (struct sockaddr *)&sa, sizeof(sa));	
+	//alg_bind->skcipher_bind->crypto_alloc_skcipher
+setsockopt(tfmfd, SOL_ALG, ALG_SET_KEY, key, keylen);
+	//alg_setsockopt->alg_setkey->crypto_skcipher_setkey
+opfd = accept(tfmfd, NULL, 0);
+	//alg_accept->af_alg_accept(sock->ops = &algif_skcipher_ops)
+...		//设置msg
+sendmsg(opfd, &msg, 0);
+	//
+read(opfd, output, srclen);
+	//
+close(opfd);
+close(tfmfd);
+```
+
+&emsp;&emsp;通过套接字接口会调用到前文的内核cryptoapi接口，比如bind对应的是内核分配设置算法实例接口skcipher_request_alloc。
+
+#### 6.2 通过开源软件库的api使用cryptoapi
+
+```c
+/* openssl开源库的常用高级加密evp接口的模版 */
+
+ENGINE_load_builtin_engines();
+ENGINE_load_dynamic();
+ENGINE *engine = ENGINE_by_id("afalg");
+ENGINE_init(engine);
+ENGINE_set_default(engine, ENGINE_METHOD_ALL);		
+ENGINE_register_all_complete();
+
+EVP_CIPHER *cipher = EVP_get_cipherbyname("AES-128-CBC");	//openssl的名字和注册内核的不一样
+EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+EVP_EncryptInit_ex(ctx, cipher, NULL, key, iv);
+EVP_EncryptUpdate(ctx, output_encrypt, &outlen, input, input_len);
+EVP_EncryptFinal_ex(ctx, output_encrypt + outlen, &outlen);
+EVP_CIPHER_CTX_free(ctx);
+
+ENGINE_finish(engine);
+ENGINE_free(engine);
+```
+
+&emsp;&emsp;这种方法本质上也是使用了af_alg协议套接字，因为这是应用层访问内核cryptoapi的必通之路，只是开源库封装了使用户看不到，但是经过测试和openssl afalg引擎源代码e_afalg.c的确认，**openssl afalg引擎目前只能对接cbc(aes)模式**。
+
+#### 6.3 通过sdk api使用设备节点不使用cryptoapi
+
+```c
+spacc_dev_open(fd, cipher_mode, hash_mode, encrypt, icvmode, icv_len, aad_copy, 
+                   ckey, ckeylen, civ, civlen, hkey, hkeylen, hiv, hivlen)；             
+spacc_dev_process(fd, new_iv, iv_offset, pre_aad, post_aad, src_offset, dst_offset, 
+                  src, src_len, dst, dst_len)；
+spacc_dev_close(fd);           
+```
+
+&emsp;&emsp;本质是通过使用sdk的字符设备驱动导出的字符设备来直接操作spacc。

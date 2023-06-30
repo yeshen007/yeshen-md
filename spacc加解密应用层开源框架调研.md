@@ -13,29 +13,37 @@
 
 ```c
 /* 下载openssl源码 */
-从https://www.openssl.org/source/下载openssl-1.1.1t.tar.gz
-tar -xvf openssl-1.1.1t.tar.gz
-mv openssl-1.1.1t/ openssl/
-cd openssl/
+从https://www.openssl.org/source/ 下载openssl-3.1.1.tar.gz(经过我反复测试只有这个或更新版本能使能linux-aarch64的afalg引擎)
+tar -xvf openssl-3.1.1.tar.gz
+cd openssl-3.1.1/ 
     
 /* 配置，使能afalg引擎 */
-./Configure linux-aarch64 enable-afalgeng --cross-compile-prefix=aarch64-none-linux-gnu- shared 
-    
+./Configure linux-aarch64 enable-afalgeng --cross-compile-prefix=aarch64-none-linux-gnu- 
+ 或者
+./Configure linux-aarch64 --cross-compile-prefix=aarch64-none-linux-gnu- shared enable-engine enable-dso enable-afalgeng
+
 /* 编译 */
+source /opt/arm.env
 make -j4
 
 /* 安装 */
-make install DESTDIR=/home/syshaps/workspace/zye/openssl-target
+//make install DESTDIR=/home/syshaps/workspace/zye/openssl-target
+make install DESTDIR=/home/yeshen/workspace/openssl/target
 
-//拷贝头文件和库文件到交叉编译工具链目录
-sudo cp -r /home/syshaps/workspace/zye/openssl-target/usr/local/include/openssl /opt/gcc-arm-10.2-2020.11-x86_64-aarch64-none-linux-gnu/aarch64-none-linux-gnu/libc/usr/include
-sudo cp -r /home/syshaps/workspace/zye/openssl-target/usr/local/lib/libcrypto.* /opt/gcc-arm-10.2-2020.11-x86_64-aarch64-none-linux-gnu/aarch64-none-linux-gnu/libc/usr/lib64
-sudo cp -r /home/syshaps/workspace/zye/openssl-target/usr/local/lib/libssl.* /opt/gcc-arm-10.2-2020.11-x86_64-aarch64-none-linux-gnu/aarch64-none-linux-gnu/libc/usr/lib64
+/* 拷贝头文件和库文件到交叉编译工具链目录(参考pkgconfig中的.pc后缀文件) */
+//sudo cp -r /home/syshaps/workspace/zye/openssl-target/usr/local/include/openssl /opt/gcc-arm-10.2-2020.11-x86_64-aarch64-none-linux-gnu/aarch64-none-linux-gnu/libc/usr/include
+//sudo cp -r /home/syshaps/workspace/zye/openssl-target/usr/local/lib/libcrypto.* /opt/gcc-arm-10.2-2020.11-x86_64-aarch64-none-linux-gnu/aarch64-none-linux-gnu/libc/usr/lib64
+//sudo cp -r /home/syshaps/workspace/zye/openssl-target/usr/local/lib/libssl.* /opt/gcc-arm-10.2-2020.11-x86_64-aarch64-none-linux-gnu/aarch64-none-linux-gnu/libc/usr/lib64
+cp -r /home/yeshen/workspace/openssl/target/usr/local/include/openssl /home/yeshen/workspace/toolchain/aarch64-none-linux-gnu/libc/usr/include
+cp -r /home/yeshen/workspace/openssl/target/usr/local/lib/* /home/yeshen/workspace/toolchain/aarch64-none-linux-gnu/libc/usr/lib
 
-//拷贝库文件到目标文件系统
-//cpio文件系统中已经有了，这里只是列出命令，没有拷贝，如果跑不起来再拷贝覆盖cpio，使得同步
-sudo cp -r /home/syshaps/workspace/zye/openssl-target/usr/local/lib/libcrypto.* target_rootfs/usr/lib
-sudo cp -r /home/syshaps/workspace/zye/openssl-target/usr/local/lib/libssl.* target_rootfs/usr/lib
+
+/* 拷贝库文件,引擎文件到目标文件系统(参考pkgconfig中的.pc后缀文件) */
+//sudo cp -r /home/syshaps/workspace/zye/openssl-target/usr/local/lib/libcrypto.* target_rootfs/usr/lib
+//sudo cp -r /home/syshaps/workspace/zye/openssl-target/usr/local/lib/libssl.* target_rootfs/usr/lib
+//cp -r /home/yeshen/workspace/openssl/target/usr/local/bin/* /home/yeshen/workspace/cpio_mnt/usr/bin
+cp -r /home/yeshen/workspace/openssl/target/usr/local/lib/* /home/yeshen/workspace/cpio_mnt/usr/local/lib
+
 
 /* 清除 */
 make clean

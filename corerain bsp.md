@@ -93,6 +93,9 @@ cd /home/syshaps/workspace/zye/haps/bin
 scp zye@192.168.11.247:/home/zye/kernel/arch/arm64/boot/dts/corerain/bass-haps.dtb XX
 scp zye@192.168.11.247:/home/zye/kernel/arch/arm64/boot/Image XX
 
+/* scp拷贝247服务器编译好的驱动 */
+scp zye@192.168.11.247:/home/zye/spacc/bin/spacc-crypto.ko .
+
 /* 配置模拟硬件(./zye_config) */
 config_haps /home/syshaps/workspace/storage/yqwu/haps_projects/confpro_ws_20230325_4boot_20230412/designs
 
@@ -124,7 +127,7 @@ config_haps /home/syshaps/workspace/storage/yqwu/haps_projects/confpro_ws_202303
 cd /home/syshaps/workspace/zye/haps/cpio_mnt
 cpio -iv < ../bin/rootfs_haps_crypto.cpio		//解压到目录
 ...		//增删改
-注释掉/etc/inittab	#ttyS1::respawn:/sbin/getty...	//目前不知道有啥用
+注释掉/etc/inittab	#ttyS1::respacd wn:/sbin/getty...	//目前不知道有啥用
 find . | cpio --quiet -o -H newc > ../bin/rootfs_haps_new.cpio	//重新打包
 参考HAPS_UG.pdf更改bass-haps.dts重新编译内核和设备树		//如果文件系统大小变化了
 
@@ -134,10 +137,10 @@ aarch64-none-linux-gnu-gcc -print-sysroot
 /* arm和216传送文件 */
 //arm收216发
 ./soc_trans_receiver USB
-./usb_trans_sender 0x80000000 file/dir
+./usb_trans_sender 0x80000000 tarm
 
 //216收arm发
 ./usb_trans_receiver 0x80000000
-./soc_trans_sender USB file/dir
+./soc_trans_sender USB dir/file
 ```
 
