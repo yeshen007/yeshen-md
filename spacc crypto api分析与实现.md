@@ -761,9 +761,9 @@ opfd = accept(tfmfd, NULL, 0);
 	//alg_accept->af_alg_accept(sock->ops = &algif_skcipher_ops)
 ...		//设置msg
 sendmsg(opfd, &msg, 0);
-	//
+	//sock_sendmsg->skcipher_sendmsg
 read(opfd, output, srclen);
-	//
+	//sock_read_iter->sock_recvmsg->skcipher_recvmsg
 close(opfd);
 close(tfmfd);
 ```
@@ -805,4 +805,4 @@ spacc_dev_process(fd, new_iv, iv_offset, pre_aad, post_aad, src_offset, dst_offs
 spacc_dev_close(fd);           
 ```
 
-&emsp;&emsp;本质是通过使用sdk的字符设备驱动导出的字符设备来直接操作spacc。
+&emsp;&emsp;本质是通过使用sdk的字符设备驱动导出的字符设备来直接操作spacc，没有经过cryptoapi框架，软件通路相对cryptoapi更少，但是应用层的访问没有标准化。
