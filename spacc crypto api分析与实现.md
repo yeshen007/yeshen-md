@@ -69,7 +69,7 @@
 
 
 
-### 2. atmel加速器代码分析记录
+### 2. atmel skcipher分析记录
 
 > atmel-aes.c
 
@@ -272,7 +272,7 @@ atmel_aes_irq
 
 
 
-### 3. mtk加速器代码分析记录
+### 3. mtk skcipher分析记录
 
 > mtk-platform.c mtk-aes.c
 
@@ -806,3 +806,47 @@ spacc_dev_close(fd);
 ```
 
 &emsp;&emsp;本质是通过使用sdk的字符设备驱动导出的字符设备来直接操作spacc，没有经过cryptoapi框架，软件通路相对cryptoapi更少，但是应用层的访问没有标准化。
+
+### 7. hash分析记录
+
+#### 7.1 mtk
+
+```c
+mtk_hash_alg_register(cryp)
+    list_add_tail(&cryp->sha_list, &mtk_sha.dev_list);
+
+ahashtfm = crypto_alloc_ahash(algname)
+	crypto_ahash_init_tfm(tfm)				//frontend->init_tfm
+    	ahashtfm->init = mtk_sha_init		//alg->init
+    	ahashtfm->update = mtk_sha_update	//alg->update
+    	...
+	mtk_sha_cra_init(tfm)			//alg->cra_init(tfm)
+    	crypto_ahash_set_reqsize	//设置ahashtfm->reqsize
+	
+ahashreq = ahash_request_alloc(ahashtfm)    
+    ahash_request_set_tfm(ahashreq, ahashtfm)
+  
+//init    
+crypto_ahash_init(ahashreq)	
+    mtk_sha_init(ahashreq)			//ahashtfm->init
+		rctx->xx = yy
+		
+//update
+crypto_ahash_update(ahashreq)  
+    mtk_sha_update(ahashreq)		//ahashtfm->update
+		rctx->xx = yy
+		mtk_sha_enqueue(ahashreq, SHA_OP_UPDATE)
+    
+//final
+crypto_ahash_final(ahashreq)
+    mtk_sha_final(ahashreq)		//ahashtfm->final
+    	rctx->flags |= SHA_FLAGS_FINUP
+    	mtk_sha_enqueue(ahashreq, SHA_OP_FINAL)
+```
+
+#### 7.2 rockchip
+
+```c
+
+```
+
