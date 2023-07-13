@@ -521,7 +521,7 @@ crypto_skcipher_setkey
 crypto_skcipher_encrypt(struct skcipher_request *req)
 	spacc_aes_cbc_encrypt(req)	
 		spacc_aes_crypt(req, AES_FLAGS_ENCRYPT | AES_FLAGS_CBC)	
-			ctx->cryp = spacc_aes_find_dev
+			ctx->cryp = spacc_aes_find_dev					//
 			rctx->mode = AES_FLAGS_ENCRYPT | AES_FLAGS_CBC
 			spacc_aes_handle_queue(ctx->cryp, &req->base)
 				crypto_enqueue_request		// if newreq
@@ -842,11 +842,109 @@ crypto_ahash_final(ahashreq)
     mtk_sha_final(ahashreq)		//ahashtfm->final
     	rctx->flags |= SHA_FLAGS_FINUP
     	mtk_sha_enqueue(ahashreq, SHA_OP_FINAL)
+    
+//finup(optional)
+crypto_ahash_finup(ahashreq)  
+    
+//digest(optional)
+crypto_ahash_digest(ahashreq)   
 ```
 
-#### 7.2 rockchip
+#### 7.2 atmel
 
 ```c
+//分配设置算法实例
+crypto_alloc_ahash
+	crypto_alloc_tfm
+		crypto_alloc_tfm_node
+			crypto_find_alg
+			crypto_create_tfm_node
+				alloc(sizeof(struct crypto_tfm) 
+                      	+ frontend->tfmsize 		//offsetof(struct crypto_ahash, base)
+                      	+ frontend->extsize(alg)	//sizeof(struct atmel_sha_ctx)
+				tfm->__crt_alg = alg;		//
+				frontend->init_tfm()		//crypto_ahash_init_tfm
+                     crypto_ahash_init_tfm(tfm)
+                         ahashtfm->init = atmel_sha_init		//alg->init
+                         ahashtfm->update = atmel_sha_update	//alg->update
+                         ...
+                     atmel_sha_cra_init(tfm)			//alg->cra_init(tfm)
+                         struct atmel_sha_ctx *ctx = crypto_tfm_ctx(tfm);
+                         crypto_ahash_set_reqsize(__crypto_ahash_cast(tfm),
+                                 sizeof(struct atmel_sha_reqctx));	//
+                         ctx->start = atmel_sha_start;			//                   
+                      
+//分配设置请求
+req = ahash_request_alloc(tfm)
+	kmalloc(sizeof(struct ahash_request) + crypto_ahash_reqsize(tfm))
+	ahash_request_set_tfm(req, tfm)	//请求绑定算法对象
+...
+ahash_request_set_crypt(req, src, result, nbytes)   
+                      
+//init
+crypto_ahash_init(req)
+	atmel_sha_init(req)	//tfm->init
+         ctx->dd = dd 
+         ctx->flags = 0
+         ctx->flags |= SHA_FLAGS_SHAX
+         ctx->block_size = SHAX_BLOCK_SIZE
+		ctx->bufcnt = 0
+		ctx->digcnt[0] = 0
+		ctx->digcnt[1] = 0
+		ctx->buflen = SHA_BUFFER_LEN
+		return 0;
 
+//update
+crypto_ahash_update(req)
+	atmel_sha_update(req)		//tfm->update
+         ctx->total = req->nbytes		//
+         ctx->sg = req->src
+         ctx->offset = 0
+         //如果buffer还够空间存放本次req则存放到buffer就返回             
+		if (ctx->bufcnt + ctx->total < ctx->buflen) {
+			atmel_sha_append_sg(ctx)	
+			return 0;
+		}
+         //否则             
+		atmel_sha_enqueue(req, SHA_OP_UPDATE)	
+         	ctx->op = SHA_OP_UPDATE		//
+         	atmel_sha_handle_queue
+         		atmel_sha_start
+         			dd->resume = atmel_sha_done		//
+         			err = atmel_sha_update_req(dd)		
+         			if (!err)
+                     	 atmel_sha_finish_req(req, err)	
+                                        
+//final
+crypto_ahash_final(ahashreq)  
+	atmel_sha_final(ahashreq)
+		ctx->flags |= SHA_FLAGS_FINUP				//
+		if (ctx->flags & SHA_FLAGS_ERROR)
+			return 0;
+		if (ctx->flags & SHA_FLAGS_PAD)
+             return atmel_sha_finish(req);        
+		atmel_sha_enqueue(req, SHA_OP_FINAL)
+			ctx->op = SHA_OP_FINAL		//
+			atmel_sha_handle_queue
+				atmel_sha_start
+					dd->resume = atmel_sha_done
+					err = atmel_sha_final_req(dd)
+					if (!err)
+						atmel_sha_finish_req(req, err);		
+                      
+//finup(update + final)
+crypto_ahash_finup(ahashreq)  
+	atmel_sha_finup(ahashreq) 
+		ctx->flags |= SHA_FLAGS_FINUP		//
+		err1 = atmel_sha_update(req)
+         if (err1 == -EINPROGRESS ||
+             (err1 == -EBUSY && (ahash_request_flags(req) &
+                     CRYPTO_TFM_REQ_MAY_BACKLOG)))
+			return err1;  
+		err2 = atmel_sha_final(req)
+		return err1 ?: err2;
+                      
+//digest(init + update + final)
+crypto_ahash_digest(ahashreq)
+	atmel_sha_init(req) ?: atmel_sha_finup(req)          
 ```
-
