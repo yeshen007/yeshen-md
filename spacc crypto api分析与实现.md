@@ -753,7 +753,7 @@ struct sockaddr_alg sa = {
 };
 tfmfd = socket(AF_ALG, SOCK_SEQPACKET, 0);	
 	//alg_create(sock->ops = &alg_proto_ops)
-bind(tfmfd, (struct sockaddr *)&sa, sizeof(sa));	
+bind(tfmfd, (struct sockaddr *)&sa, sizeof(sa));		//type:algif_type_skcipher
 	//alg_bind->skcipher_bind->crypto_alloc_skcipher
 setsockopt(tfmfd, SOL_ALG, ALG_SET_KEY, key, keylen);
 	//alg_setsockopt->alg_setkey->crypto_skcipher_setkey
@@ -948,3 +948,40 @@ crypto_ahash_finup(ahashreq)
 crypto_ahash_digest(ahashreq)
 	atmel_sha_init(req) ?: atmel_sha_finup(req)          
 ```
+
+#### 7.3 直接操作af_alg协议套接字使用cryptoapi
+
+```c
+struct sockaddr_alg sa = {
+    .salg_family = AF_ALG,
+    .salg_type = "skcipher",			//算法类型
+    .salg_name = "hmac(sha1)"		//算法名
+};
+tfmfd = socket(AF_ALG, SOCK_SEQPACKET, 0);	
+	//alg_create
+		//sock->ops = &alg_proto_ops
+		//sock_init_data(sock, sk)
+bind(tfmfd, (struct sockaddr *)&sa, sizeof(sa));	//type:algif_type_hash
+	//alg_bind
+		//type = algif_type_hash
+		//private = hash_bind->crypto_alloc_ahash
+		//ask->type = type
+		//ask->private = private
+setsockopt(tfmfd, SOL_ALG, ALG_SET_KEY, key, keylen);
+	//alg_setsockopt->hash_setkey->crypto_ahash_setkey
+opfd = accept(tfmfd, NULL, 0);
+	//alg_accept
+		//af_alg_accept
+			//newsock->ops = &algif_skcipher_ops
+			//hash_accept_parent
+				//newask->private = ctx;
+				//ahash_request_set_tfm
+				//ahash_request_set_callback
+write(opfd, &msg, 0);
+	//sock_write_iter->sock_sendmsg->hash_sendmsg
+read(opfd, output, srclen);
+	//sock_read_iter->sock_recvmsg->hash_recvmsg
+close(opfd);
+close(tfmfd);
+```
+

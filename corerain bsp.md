@@ -55,6 +55,10 @@ passwd: Yezheng@123
 192.168.11.1
 Administrator
 yes!00
+    
+/* atrust */
+zye
+8702642ye@
 ```
 
 #### 2. 代码编译
@@ -97,7 +101,8 @@ scp zye@192.168.11.247:/home/zye/kernel/arch/arm64/boot/Image XX
 scp zye@192.168.11.247:/home/zye/spacc/bin/spacc-crypto.ko .
 
 /* 配置模拟硬件(./zye_config) */
-config_haps /home/syshaps/workspace/storage/yqwu/haps_projects/confpro_ws_20230325_4boot_20230412/designs
+//config_haps /home/syshaps/workspace/storage/yqwu/haps_projects/confpro_ws_20230325_4boot_20230412/designs
+config_haps /home/syshaps/workspace/storage/yqwu/haps_projects/confpro_ws_20230430_4boot_media/designs
 
 /* 将镜像写入ddr并启动(./run.sh) */
 ./ddr_writing bl31.bin 0x400000000
@@ -142,5 +147,16 @@ aarch64-none-linux-gnu-gcc -print-sysroot
 //216收arm发
 ./usb_trans_receiver 0x80000000
 ./soc_trans_sender USB dir/file
+
+/* 启动haps */
+ source ~/.bashrc
+ sudo su
+ cd /root
+ ./rc.local
+ exit
+ 
+ /* trace32 */
+ ./trace32_config
+ bin\windows64\t32marm.exe -c config_eth.t32 -s scripts\bass_haps.cmm
 ```
 
