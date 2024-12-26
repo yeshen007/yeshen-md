@@ -33,11 +33,11 @@
 
 &emsp;&emsp;表示一个**对称加解密的请求**，除了包含crypto_async_request外还包括对称加密类型相关的属性比如加密长度和源数据，目的数据，初始化向量，以及驱动自定义的结构。
 
-##### (7) spacc_aes_ctx
+##### (7) spacc_sk_ctx
 
 &emsp;&emsp;表示在一整个加解密任务过程中需要保存的特定驱动数据，在我的实现中保存密钥和其他需要的数据和函数。
 
-##### (8) spacc_aes_reqctx
+##### (8) spacc_sk_reqctx
 
 &emsp;&emsp;表示在一个请求处理过程中需要保存的特定驱动数据，在我的实现中保存加解密的模式。
 
@@ -751,21 +751,25 @@ struct sockaddr_alg sa = {
     .salg_type = "skcipher",			//算法类型
     .salg_name = "spacc-cbc-aes"		//算法名
 };
-tfmfd = socket(AF_ALG, SOCK_SEQPACKET, 0);	
+tfmfd = socket(AF_ALG, SOCK_SEQPACKET, 0);	//__sys_socket
 	//alg_create(sock->ops = &alg_proto_ops)
-bind(tfmfd, (struct sockaddr *)&sa, sizeof(sa));		//type:algif_type_skcipher
+bind(tfmfd, (struct sockaddr *)&sa, sizeof(sa));	//__sys_bind		//type:algif_type_skcipher
 	//alg_bind->skcipher_bind->crypto_alloc_skcipher
-setsockopt(tfmfd, SOL_ALG, ALG_SET_KEY, key, keylen);
+setsockopt(tfmfd, SOL_ALG, ALG_SET_KEY, key, keylen);	//__sys_setsockopt
 	//alg_setsockopt->alg_setkey->crypto_skcipher_setkey
-opfd = accept(tfmfd, NULL, 0);
+opfd = accept(tfmfd, NULL, 0);	//__sys_accept4
 	//alg_accept->af_alg_accept(sock->ops = &algif_skcipher_ops)
-...		//设置msg
-sendmsg(opfd, &msg, 0);
+...		
+sendmsg(opfd, &msg, 0);		//__sys_sendmsg
 	//sock_sendmsg->skcipher_sendmsg
-read(opfd, output, srclen);
-	//sock_read_iter->sock_recvmsg->skcipher_recvmsg
-close(opfd);
+read(opfd, output, srclen);	//ksys_read
+	//sock_read_iter->sock_recvmsg->skcipher_recvmsg->alloc request
+close(opfd);	//ksys_close
 close(tfmfd);
+
+//socket_file_ops
+//PIPE_DEF_BUFFERS
+//alloc_pipe_info
 ```
 
 &emsp;&emsp;通过套接字接口会调用到前文的内核cryptoapi接口，比如bind对应的是内核分配设置算法实例接口skcipher_request_alloc。
